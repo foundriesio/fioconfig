@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"fmt"
 	"os"
 
 	"github.com/foundriesio/schneierteard/internal"
@@ -47,6 +48,14 @@ func main() {
 				Usage: "Extract the current encrypted configuration to secrets directory",
 				Action: func(c *cli.Context) error {
 					return extract(c)
+				},
+			},
+			{
+				Name:  "version",
+				Usage: "Dispaly version of this command",
+				Action: func(c *cli.Context) error {
+					fmt.Println(internal.Commit)
+					return nil
 				},
 			},
 		},

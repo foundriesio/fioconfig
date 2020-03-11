@@ -9,6 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
+var Commit string
+
 type ConfigFile struct {
 	Value    []byte
 	OnChange string
