@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"testing"
@@ -124,6 +127,57 @@ func TestExtract(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		assertFile(t, filepath.Join(tempdir, "foo"), []byte("foo file value"))
+		assertFile(t, filepath.Join(tempdir, "bar"), []byte("bar file value"))
+		assertFile(t, filepath.Join(tempdir, "random"), nil)
+	})
+}
+
+func TestCheckBad(t *testing.T) {
+	testWrapper(t, func(app *App, tempdir string) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		}))
+		defer ts.Close()
+
+		app.client = ts.Client()
+		app.configUrl = ts.URL
+
+		err := app.CheckIn()
+		if err == nil {
+			t.Fatal("Checkin should have gotten a 404")
+		}
+
+		if !strings.HasSuffix(strings.TrimSpace(err.Error()), "HTTP_404: 404 page not found") {
+			t.Fatalf("Unexpected response: '%s'", err)
+		}
+	})
+}
+
+func TestCheckGood(t *testing.T) {
+	testWrapper(t, func(app *App, tempdir string) {
+		encbuf, err := ioutil.ReadFile(app.EncryptedConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Remove this file so we can be sure the check-in creates it
+		os.Remove(app.EncryptedConfig)
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write(encbuf)
+		}))
+		defer ts.Close()
+
+		app.client = ts.Client()
+		app.configUrl = ts.URL
+
+		if err := app.CheckIn(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Make sure encrypted file exists
+		assertFile(t, app.EncryptedConfig, nil)
+
+		// Make sure decrypted files exist
 		assertFile(t, filepath.Join(tempdir, "foo"), []byte("foo file value"))
 		assertFile(t, filepath.Join(tempdir, "bar"), []byte("bar file value"))
 		assertFile(t, filepath.Join(tempdir, "random"), nil)

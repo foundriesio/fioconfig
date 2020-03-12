@@ -30,6 +30,15 @@ func extract(c *cli.Context) error {
 	return nil
 }
 
+func checkin(c *cli.Context) error {
+	app, err := NewApp(c)
+	if err != nil {
+		return err
+	}
+	log.Print("Checking in with server")
+	return app.CheckIn()
+}
+
 func main() {
 	app := &cli.App{
 		Name:  "schneier-teard",
@@ -56,6 +65,13 @@ func main() {
 				Usage: "Extract the current encrypted configuration to secrets directory",
 				Action: func(c *cli.Context) error {
 					return extract(c)
+				},
+			},
+			{
+				Name:  "check-in",
+				Usage: "Check in with the server and update the local config",
+				Action: func(c *cli.Context) error {
+					return checkin(c)
 				},
 			},
 			{
