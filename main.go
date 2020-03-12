@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/foundriesio/schneierteard/internal"
 	"github.com/urfave/cli/v2"
@@ -42,6 +43,22 @@ func checkin(c *cli.Context) error {
 	return nil
 }
 
+func daemon(c *cli.Context) error {
+	interval := time.Second * time.Duration(c.Int("interval"))
+	app, err := NewApp(c)
+	if err != nil {
+		return err
+	}
+	log.Print("Running as deamon with interval %ld seconds", c.Int("interval"))
+	for {
+		log.Print("Checking in with server")
+		if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
+			log.Println(err)
+		}
+		time.Sleep(interval)
+	}
+}
+
 func main() {
 	app := &cli.App{
 		Name:  "schneier-teard",
@@ -75,6 +92,21 @@ func main() {
 				Usage: "Check in with the server and update the local config",
 				Action: func(c *cli.Context) error {
 					return checkin(c)
+				},
+			},
+			{
+				Name:  "daemon",
+				Usage: "Run check-in's with the server in an endless loop",
+				Action: func(c *cli.Context) error {
+					return daemon(c)
+				},
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:    "interval",
+						Aliases: []string{"i"},
+						Value:   300,
+						Usage:   "Interval in seconds for checking in for updates",
+					},
 				},
 			},
 			{
