@@ -20,4 +20,4 @@ check: test
 	@test -z $(shell gofmt -l ./ | tee /dev/stderr) || echo "[WARN] Fix formatting issues with 'make fmt'"
 
 test:
-	go test ./internal
+	go test ./... -v
