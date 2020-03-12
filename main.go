@@ -36,7 +36,10 @@ func checkin(c *cli.Context) error {
 		return err
 	}
 	log.Print("Checking in with server")
-	return app.CheckIn()
+	if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
+		return err
+	}
+	return nil
 }
 
 func main() {

@@ -163,6 +163,10 @@ func TestCheckGood(t *testing.T) {
 		// Remove this file so we can be sure the check-in creates it
 		os.Remove(app.EncryptedConfig)
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if len(r.Header.Get("If-Modified-Since")) > 0 {
+				w.WriteHeader(304)
+				return
+			}
 			w.Write(encbuf)
 		}))
 		defer ts.Close()
@@ -181,5 +185,10 @@ func TestCheckGood(t *testing.T) {
 		assertFile(t, filepath.Join(tempdir, "foo"), []byte("foo file value"))
 		assertFile(t, filepath.Join(tempdir, "bar"), []byte("bar file value"))
 		assertFile(t, filepath.Join(tempdir, "random"), nil)
+
+		// Now make sure the if-not-modified logic works
+		if err := app.CheckIn(); err != NotModifiedError {
+			t.Fatal(err)
+		}
 	})
 }

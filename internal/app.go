@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,9 +13,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
+
+var NotModifiedError = errors.New("Config unchanged on server")
 
 type App struct {
 	PrivKey         *ecies.PrivateKey
@@ -128,7 +132,16 @@ func safeWrite(input io.ReadCloser, path string) error {
 }
 
 func (a *App) CheckIn() error {
-	res, err := a.client.Get(a.configUrl)
+	req, err := http.NewRequest("GET", a.configUrl, nil)
+
+	fi, err := os.Stat(a.EncryptedConfig)
+	if err == nil {
+		// Don't pull it down unless we need to
+		ts := fi.ModTime().UTC().Format(time.RFC1123)
+		req.Header.Add("If-Modified-Since", ts)
+	}
+
+	res, err := a.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("Unable to get: %s - %v", a.configUrl, err)
 	}
@@ -136,6 +149,9 @@ func (a *App) CheckIn() error {
 		if err := safeWrite(res.Body, a.EncryptedConfig); err != nil {
 			return err
 		}
+	} else if res.StatusCode == 304 {
+		log.Println("Config on server has not changed")
+		return NotModifiedError
 	} else {
 		msg, _ := ioutil.ReadAll(res.Body)
 		res.Body.Close()
