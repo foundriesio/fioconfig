@@ -79,7 +79,7 @@ func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 	if string(config["foo"].Value) == "foo file value" {
 		t.Fatal("Encryption did not occur")
 	}
-	app, err := NewApp(dir, dir)
+	app, err := NewApp(dir, dir, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ type App struct {
 	configUrl string
 }
 
-func createClient(sota_config string) *http.Client {
+func createClient(sota_config string) (*http.Client, *ecdsa.PrivateKey) {
 	certFile := filepath.Join(sota_config, "client.pem")
 	keyFile := filepath.Join(sota_config, "pkey.pem")
 	caFile := filepath.Join(sota_config, "root.crt")
@@ -48,31 +48,38 @@ func createClient(sota_config string) *http.Client {
 	}
 	tlsConfig.BuildNameToCertificate()
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	return &http.Client{Transport: transport}
+	return &http.Client{Transport: transport}, cert.PrivateKey.(*ecdsa.PrivateKey)
 }
 
-func NewApp(sota_config, secrets_dir string) (*App, error) {
-	path := filepath.Join(sota_config, "pkey.pem") // TODO from sota.toml
-	pkey_pem, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to read private key: %v", err)
-	}
+func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
+	var client *http.Client = nil
+	var priv *ecdsa.PrivateKey = nil
+	if testing {
+		path := filepath.Join(sota_config, "pkey.pem")
+		pkey_pem, err := ioutil.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to read private key: %v", err)
+		}
 
-	block, _ := pem.Decode(pkey_pem)
-	if block == nil {
-		return nil, fmt.Errorf("Unable to decode private key(%s): %v", path, err)
-	}
+		block, _ := pem.Decode(pkey_pem)
+		if block == nil {
+			return nil, fmt.Errorf("Unable to decode private key(%s): %v", path, err)
+		}
 
-	priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to parse private key(%s): %v", path, err)
+		p, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to parse private key(%s): %v", path, err)
+		}
+		priv = p.(*ecdsa.PrivateKey)
+	} else {
+		client, priv = createClient(sota_config)
 	}
 
 	app := App{
-		PrivKey:         ecies.ImportECDSA(priv.(*ecdsa.PrivateKey)),
+		PrivKey:         ecies.ImportECDSA(priv),
 		EncryptedConfig: filepath.Join(sota_config, "config.encrypted"),
 		SecretsDir:      secrets_dir,
-		client:          createClient(sota_config),
+		client:          client,
 		configUrl:       "https://ota-lite.foundries.io:8443/config/",
 	}
 

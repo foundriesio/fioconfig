@@ -11,7 +11,7 @@ import (
 )
 
 func NewApp(c *cli.Context) (*internal.App, error) {
-	return internal.NewApp(c.String("config"), c.String("secrets-dir"))
+	return internal.NewApp(c.String("config"), c.String("secrets-dir"), false)
 }
 
 func extract(c *cli.Context) error {
