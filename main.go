@@ -1,8 +1,9 @@
 package main
 
 import (
-	"log"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/foundriesio/schneierteard/internal"
@@ -19,6 +20,13 @@ func extract(c *cli.Context) error {
 		return err
 	}
 	log.Printf("Extracting keys from %s to %s", app.EncryptedConfig, app.SecretsDir)
+	if err := app.Extract(); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.Println("Encrypted config does not exist")
+		} else {
+			return err
+		}
+	}
 	return nil
 }
 

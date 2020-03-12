@@ -19,7 +19,7 @@ type ConfigFile struct {
 func Unmarshall(ecPriv *ecies.PrivateKey, encFile string) (map[string]*ConfigFile, error) {
 	content, err := ioutil.ReadFile(encFile)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to read encrypted file: %v", err)
+		return nil, fmt.Errorf("Unable to read encrypted file: %w", err)
 	}
 
 	var config map[string]*ConfigFile

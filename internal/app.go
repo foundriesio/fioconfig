@@ -6,6 +6,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/crypto/ecies"
@@ -41,4 +43,22 @@ func NewApp(sota_config, secrets_dir string) (*App, error) {
 	}
 
 	return &app, nil
+}
+
+func (a *App) Extract() error {
+	if _, err := os.Stat(a.SecretsDir); err != nil {
+		return err
+	}
+	config, err := Unmarshall(a.PrivKey, a.EncryptedConfig)
+	if err != nil {
+		return err
+	}
+
+	for fname, cfgFile := range config {
+		log.Printf("Extracting %s", fname)
+		if err := ioutil.WriteFile(filepath.Join(a.SecretsDir, fname), cfgFile.Value, 0644); err != nil {
+			return fmt.Errorf("Unable to extract %s: %v", fname, err)
+		}
+	}
+	return nil
 }

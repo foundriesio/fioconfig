@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
@@ -50,7 +51,7 @@ func encrypt(t *testing.T, config map[string]*ConfigFile) {
 	}
 }
 
-func testWrapper(t *testing.T, testFunc func(app *App)) {
+func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 	dir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Error(err)
@@ -86,11 +87,11 @@ func testWrapper(t *testing.T, testFunc func(app *App)) {
 	if err := ioutil.WriteFile(app.EncryptedConfig, b, 0644); err != nil {
 		t.Fatal(err)
 	}
-	testFunc(app)
+	testFunc(app, dir)
 }
 
 func TestUnmarshall(t *testing.T) {
-	testWrapper(t, func(app *App) {
+	testWrapper(t, func(app *App, tempdir string) {
 		unmarshalled, err := Unmarshall(app.PrivKey, app.EncryptedConfig)
 		if err != nil {
 			t.Fatal(err)
@@ -104,5 +105,27 @@ func TestUnmarshall(t *testing.T) {
 		if len(unmarshalled["random"].Value) != 1024 {
 			t.Fatal("Invalid random unmarshalling")
 		}
+	})
+}
+
+func assertFile(t *testing.T, path string, contents []byte) {
+	buff, err := ioutil.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contents != nil && !bytes.Equal(buff, contents) {
+		t.Fatalf("Unexpected contents: %s != %s", contents, buff)
+	}
+}
+
+func TestExtract(t *testing.T) {
+	testWrapper(t, func(app *App, tempdir string) {
+		if err := app.Extract(); err != nil {
+			t.Fatal(err)
+		}
+
+		assertFile(t, filepath.Join(tempdir, "foo"), []byte("foo file value"))
+		assertFile(t, filepath.Join(tempdir, "bar"), []byte("bar file value"))
+		assertFile(t, filepath.Join(tempdir, "random"), nil)
 	})
 }
