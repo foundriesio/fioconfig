@@ -52,7 +52,7 @@ func createClient(sota_config string) (*http.Client, *ecdsa.PrivateKey) {
 	}
 	tlsConfig.BuildNameToCertificate()
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	return &http.Client{Transport: transport}, cert.PrivateKey.(*ecdsa.PrivateKey)
+	return &http.Client{Timeout: time.Second * 30, Transport: transport}, cert.PrivateKey.(*ecdsa.PrivateKey)
 }
 
 func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
