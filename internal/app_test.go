@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"io/ioutil"
@@ -46,11 +47,11 @@ func encrypt(t *testing.T, config map[string]*ConfigFile) {
 	eciesPub := ecies.ImportECDSAPublic(ecpub)
 
 	for fname, cfgFile := range config {
-		enc, err := ecies.Encrypt(rand.Reader, eciesPub, cfgFile.Value, nil, nil)
+		enc, err := ecies.Encrypt(rand.Reader, eciesPub, []byte(cfgFile.Value), nil, nil)
 		if err != nil {
 			t.Fatalf("Unable to encrypt %s: %s", fname, err)
 		}
-		cfgFile.Value = enc
+		cfgFile.Value = base64.StdEncoding.EncodeToString(enc)
 	}
 }
 
@@ -66,17 +67,17 @@ func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 	}
 
 	config := make(map[string]*ConfigFile)
-	config["foo"] = &ConfigFile{Value: []byte("foo file value")}
-	config["bar"] = &ConfigFile{Value: []byte("bar file value")}
+	config["foo"] = &ConfigFile{Value: "foo file value"}
+	config["bar"] = &ConfigFile{Value: "bar file value"}
 	random := make([]byte, 1024) // 1MB random file
 	_, err = rand.Read(random)
 	if err != nil {
 		t.Fatalf("Unable to create random buffer: %v", err)
 	}
-	config["random"] = &ConfigFile{Value: random}
+	config["random"] = &ConfigFile{Value: base64.StdEncoding.EncodeToString(random)}
 
 	encrypt(t, config)
-	if string(config["foo"].Value) == "foo file value" {
+	if config["foo"].Value == "foo file value" {
 		t.Fatal("Encryption did not occur")
 	}
 	app, err := NewApp(dir, dir, true)
@@ -105,7 +106,7 @@ func TestUnmarshall(t *testing.T) {
 		if string(unmarshalled["bar"].Value) != "bar file value" {
 			t.Fatalf("Unable to unmarshal 'foo'")
 		}
-		if len(unmarshalled["random"].Value) != 1024 {
+		if len(unmarshalled["random"].Value) != 1368 {
 			t.Fatal("Invalid random unmarshalling")
 		}
 	})
