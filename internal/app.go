@@ -114,7 +114,7 @@ func (a *App) Extract() error {
 
 // Do an atomic change to the secrets file so that a reader of the current
 // secrets file won't hit race conditions.
-func safeWrite(input io.ReadCloser, path string) error {
+func safeWrite(input io.ReadCloser, path string, modtime time.Time) error {
 	defer input.Close()
 
 	safepath := path + ".tmp"
@@ -131,6 +131,11 @@ func safeWrite(input io.ReadCloser, path string) error {
 
 	if err := os.Rename(safepath, path); err != nil {
 		return fmt.Errorf("Unable to link secrets to: %s - %w", path, err)
+	}
+
+	err = os.Chtimes(path, modtime, modtime)
+	if err != nil {
+		return fmt.Errorf("Unable to set modified time %s - %w", path, err)
 	}
 	return nil
 }
@@ -150,8 +155,12 @@ func (a *App) CheckIn() error {
 		return fmt.Errorf("Unable to get: %s - %v", a.configUrl, err)
 	}
 	if res.StatusCode == 200 {
-		// TODO - we need to use the timestamp from headers.Date
-		if err := safeWrite(res.Body, a.EncryptedConfig); err != nil {
+		modtime, err := time.Parse(time.RFC1123, res.Header.Get("Date"))
+		if err != nil {
+			log.Printf("Unable to get modtime of config file, defaulting to 'now': %s", err)
+			modtime = time.Now()
+		}
+		if err := safeWrite(res.Body, a.EncryptedConfig, modtime); err != nil {
 			return err
 		}
 	} else if res.StatusCode == 304 {
