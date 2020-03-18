@@ -79,12 +79,16 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 		client, priv = createClient(sota_config)
 	}
 
+	url := os.Getenv("CONFIG_URL")
+	if len(url) == 0 {
+		url = "https://ota-lite.foundries.io:8443/config"
+	}
 	app := App{
 		PrivKey:         ecies.ImportECDSA(priv),
 		EncryptedConfig: filepath.Join(sota_config, "config.encrypted"),
 		SecretsDir:      secrets_dir,
 		client:          client,
-		configUrl:       "https://ota-lite.foundries.io:8443/config/",
+		configUrl:       url,
 	}
 
 	return &app, nil
