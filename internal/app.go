@@ -146,6 +146,7 @@ func (a *App) CheckIn() error {
 		return fmt.Errorf("Unable to get: %s - %v", a.configUrl, err)
 	}
 	if res.StatusCode == 200 {
+		// TODO - we need to use the timestamp from headers.Date
 		if err := safeWrite(res.Body, a.EncryptedConfig); err != nil {
 			return err
 		}

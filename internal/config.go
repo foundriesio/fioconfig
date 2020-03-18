@@ -12,8 +12,9 @@ import (
 var Commit string
 
 type ConfigFile struct {
-	Value    []byte
-	OnChange string
+	Value       []byte
+	OnChange    string
+	Unencrypted bool
 }
 
 func Unmarshall(ecPriv *ecies.PrivateKey, encFile string) (map[string]*ConfigFile, error) {
@@ -28,12 +29,14 @@ func Unmarshall(ecPriv *ecies.PrivateKey, encFile string) (map[string]*ConfigFil
 	}
 
 	for fname, cfgFile := range config {
-		log.Printf("Decoding value of %s", fname)
-		decrypted, err := ecPriv.Decrypt(cfgFile.Value, nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to decrypt %s: %v", fname, err)
+		if !cfgFile.Unencrypted {
+			log.Printf("Decoding value of %s", fname)
+			decrypted, err := ecPriv.Decrypt(cfgFile.Value, nil, nil)
+			if err != nil {
+				return nil, fmt.Errorf("Unable to decrypt %s: %v", fname, err)
+			}
+			cfgFile.Value = decrypted
 		}
-		cfgFile.Value = decrypted
 	}
 	return config, nil
 }
