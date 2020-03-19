@@ -14,7 +14,7 @@ var Commit string
 
 type ConfigFile struct {
 	Value       string
-	OnChange    string
+	OnChanged   []string
 	Unencrypted bool
 }
 

@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -107,6 +108,15 @@ func (a *App) Extract() error {
 		log.Printf("Extracting %s", fname)
 		if err := ioutil.WriteFile(filepath.Join(a.SecretsDir, fname), []byte(cfgFile.Value), 0644); err != nil {
 			return fmt.Errorf("Unable to extract %s: %v", fname, err)
+		}
+		if len(cfgFile.OnChanged) > 0 {
+			log.Printf("Running on-change command for %s: %v", fname, cfgFile.OnChanged)
+			cmd := exec.Command(cfgFile.OnChanged[0], cfgFile.OnChanged[1:]...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				log.Printf("Unable to run command: %v", err)
+			}
 		}
 	}
 	return nil

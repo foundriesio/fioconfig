@@ -68,7 +68,10 @@ func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 
 	config := make(map[string]*ConfigFile)
 	config["foo"] = &ConfigFile{Value: "foo file value"}
-	config["bar"] = &ConfigFile{Value: "bar file value"}
+	config["bar"] = &ConfigFile{
+		Value:     "bar file value",
+		OnChanged: []string{"/usr/bin/touch", filepath.Join(dir, "bar-changed")},
+	}
 	random := make([]byte, 1024) // 1MB random file
 	_, err = rand.Read(random)
 	if err != nil {
@@ -131,6 +134,7 @@ func TestExtract(t *testing.T) {
 		assertFile(t, filepath.Join(tempdir, "foo"), []byte("foo file value"))
 		assertFile(t, filepath.Join(tempdir, "bar"), []byte("bar file value"))
 		assertFile(t, filepath.Join(tempdir, "random"), nil)
+		assertFile(t, filepath.Join(tempdir, "bar-changed"), nil)
 	})
 }
 
