@@ -1,4 +1,4 @@
-module github.com/foundriesio/schneierteard
+module github.com/foundriesio/fioconfig
 
 go 1.13
 

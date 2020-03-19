@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/foundriesio/schneierteard/internal"
+	"github.com/foundriesio/fioconfig/internal"
 	"github.com/urfave/cli/v2"
 )
 
@@ -61,8 +61,8 @@ func daemon(c *cli.Context) error {
 
 func main() {
 	app := &cli.App{
-		Name:  "schneier-teard",
-		Usage: "An approach to encrypted config management that would make Bruce cry",
+		Name:  "fioconfig",
+		Usage: "An approach to encrypted config management that would make Bruce Schneier cry",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
