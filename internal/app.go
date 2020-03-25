@@ -176,6 +176,9 @@ func (a *App) CheckIn() error {
 	} else if res.StatusCode == 304 {
 		log.Println("Config on server has not changed")
 		return NotModifiedError
+	} else if res.StatusCode == 204 {
+		log.Println("Device has no config defined on server")
+		return NotModifiedError
 	} else {
 		msg, _ := ioutil.ReadAll(res.Body)
 		res.Body.Close()
