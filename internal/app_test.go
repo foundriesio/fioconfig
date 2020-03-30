@@ -99,7 +99,7 @@ func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 
 func TestUnmarshall(t *testing.T) {
 	testWrapper(t, func(app *App, tempdir string) {
-		unmarshalled, err := Unmarshall(app.PrivKey, app.EncryptedConfig)
+		unmarshalled, err := Unmarshall(app.Crypto, app.EncryptedConfig)
 		if err != nil {
 			t.Fatal(err)
 		}

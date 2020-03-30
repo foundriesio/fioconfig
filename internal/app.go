@@ -2,7 +2,6 @@ package internal
 
 import (
 	"bytes"
-	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -16,8 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
 var NotModifiedError = errors.New("Config unchanged on server")
@@ -25,8 +22,12 @@ var NotModifiedError = errors.New("Config unchanged on server")
 // Functions to be called when the daemon is initialized
 var initFunctions = map[string]func(app *App) error{}
 
+type CryptoHandler interface {
+	Decrypt(value string) ([]byte, error)
+}
+
 type App struct {
-	PrivKey         *ecies.PrivateKey
+	Crypto          CryptoHandler
 	EncryptedConfig string
 	SecretsDir      string
 
@@ -34,7 +35,7 @@ type App struct {
 	configUrl string
 }
 
-func createClient(sota_config string) (*http.Client, *ecdsa.PrivateKey) {
+func createClient(sota_config string) (*http.Client, CryptoHandler) {
 	certFile := filepath.Join(sota_config, "client.pem")
 	keyFile := filepath.Join(sota_config, "pkey.pem")
 	caFile := filepath.Join(sota_config, "root.crt")
@@ -56,12 +57,17 @@ func createClient(sota_config string) (*http.Client, *ecdsa.PrivateKey) {
 		RootCAs:      caCertPool,
 	}
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	return &http.Client{Timeout: time.Second * 30, Transport: transport}, cert.PrivateKey.(*ecdsa.PrivateKey)
+	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
+
+	if handler := NewEciesHandler(cert.PrivateKey); handler != nil {
+		return client, handler
+	}
+	panic("Unsupported private key")
 }
 
 func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
-	var client *http.Client
-	var priv *ecdsa.PrivateKey
+	var client *http.Client = nil
+	var handler CryptoHandler
 	if testing {
 		path := filepath.Join(sota_config, "pkey.pem")
 		pkey_pem, err := ioutil.ReadFile(path)
@@ -78,17 +84,18 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Unable to parse private key(%s): %v", path, err)
 		}
-		priv = p.(*ecdsa.PrivateKey)
+		handler = NewEciesHandler(p)
 	} else {
-		client, priv = createClient(sota_config)
+		client, handler = createClient(sota_config)
 	}
 
 	url := os.Getenv("CONFIG_URL")
 	if len(url) == 0 {
 		url = "https://ota-lite.foundries.io:8443/config"
 	}
+
 	app := App{
-		PrivKey:         ecies.ImportECDSA(priv),
+		Crypto:          handler,
 		EncryptedConfig: filepath.Join(sota_config, "config.encrypted"),
 		SecretsDir:      secrets_dir,
 		client:          client,
@@ -118,7 +125,7 @@ func (a *App) Extract() error {
 	if _, err := os.Stat(a.SecretsDir); err != nil {
 		return err
 	}
-	config, err := Unmarshall(a.PrivKey, a.EncryptedConfig)
+	config, err := Unmarshall(a.Crypto, a.EncryptedConfig)
 	if err != nil {
 		return err
 	}
