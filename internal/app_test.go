@@ -134,7 +134,18 @@ func TestExtract(t *testing.T) {
 		assertFile(t, filepath.Join(tempdir, "foo"), []byte("foo file value"))
 		assertFile(t, filepath.Join(tempdir, "bar"), []byte("bar file value"))
 		assertFile(t, filepath.Join(tempdir, "random"), nil)
-		assertFile(t, filepath.Join(tempdir, "bar-changed"), nil)
+		barChanged := filepath.Join(tempdir, "bar-changed")
+		assertFile(t, barChanged, nil)
+
+		// Make sure files that don't change aren't updated
+		os.Remove(barChanged)
+		if err := app.Extract(); err != nil {
+			t.Fatal(err)
+		}
+		_, err := os.Stat(barChanged)
+		if !os.IsNotExist(err) {
+			t.Fatal("OnChanged called when file has not changed")
+		}
 	})
 }
 

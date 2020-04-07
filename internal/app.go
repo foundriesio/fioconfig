@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -95,6 +96,22 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 	return &app, nil
 }
 
+// Do an atomic update of the file if needed
+func updateSecret(secretFile string, newContent []byte) (bool, error) {
+	curContent, err := ioutil.ReadFile(secretFile)
+	if err == nil && bytes.Equal(newContent, curContent) {
+		return false, nil
+	}
+	tmp := secretFile + ".tmp"
+	if err := ioutil.WriteFile(tmp, newContent, 0640); err != nil {
+		return true, fmt.Errorf("Unable to create %s: %v", tmp, err)
+	}
+	if err := os.Rename(tmp, secretFile); err != nil {
+		return true, fmt.Errorf("Unable to update secret: %s - %w", secretFile, err)
+	}
+	return true, nil
+}
+
 func (a *App) Extract() error {
 	if _, err := os.Stat(a.SecretsDir); err != nil {
 		return err
@@ -106,10 +123,11 @@ func (a *App) Extract() error {
 
 	for fname, cfgFile := range config {
 		log.Printf("Extracting %s", fname)
-		if err := ioutil.WriteFile(filepath.Join(a.SecretsDir, fname), []byte(cfgFile.Value), 0644); err != nil {
-			return fmt.Errorf("Unable to extract %s: %v", fname, err)
+		changed, err := updateSecret(filepath.Join(a.SecretsDir, fname), []byte(cfgFile.Value))
+		if err != nil {
+			return err
 		}
-		if len(cfgFile.OnChanged) > 0 {
+		if changed && len(cfgFile.OnChanged) > 0 {
 			log.Printf("Running on-change command for %s: %v", fname, cfgFile.OnChanged)
 			cmd := exec.Command(cfgFile.OnChanged[0], cfgFile.OnChanged[1:]...)
 			cmd.Stdout = os.Stdout
