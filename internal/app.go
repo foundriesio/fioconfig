@@ -123,13 +123,15 @@ func (a *App) Extract() error {
 
 	for fname, cfgFile := range config {
 		log.Printf("Extracting %s", fname)
-		changed, err := updateSecret(filepath.Join(a.SecretsDir, fname), []byte(cfgFile.Value))
+		fullpath := filepath.Join(a.SecretsDir, fname)
+		changed, err := updateSecret(fullpath, []byte(cfgFile.Value))
 		if err != nil {
 			return err
 		}
 		if changed && len(cfgFile.OnChanged) > 0 {
 			log.Printf("Running on-change command for %s: %v", fname, cfgFile.OnChanged)
 			cmd := exec.Command(cfgFile.OnChanged[0], cfgFile.OnChanged[1:]...)
+			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
