@@ -1,0 +1,8 @@
+#!/bin/sh -e
+
+# This is an OnChanged handler that can handle aktualir-lite .toml files.
+# It copies the toml file to /etc/sota/conf.d/ and will restart aktualizr-lite
+
+[ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
+cp $CONFIG_FILE /etc/sota/conf.d/
+systemctl restart aktualizr-lite
