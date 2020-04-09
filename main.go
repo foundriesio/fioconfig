@@ -20,6 +20,11 @@ func extract(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	if _, err := os.Stat(app.SecretsDir); os.IsNotExist(err) {
+		log.Printf("Creating secrets directory: %s", app.SecretsDir)
+		os.Mkdir(app.SecretsDir, 0750)
+	}
 	log.Printf("Extracting keys from %s to %s", app.EncryptedConfig, app.SecretsDir)
 	if err := app.Extract(); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
