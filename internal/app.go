@@ -22,6 +22,9 @@ import (
 
 var NotModifiedError = errors.New("Config unchanged on server")
 
+// Functions to be called when the daemon is initialized
+var initFunctions = map[string]func(app *App) error{}
+
 type App struct {
 	PrivKey         *ecies.PrivateKey
 	EncryptedConfig string
@@ -214,4 +217,14 @@ func (a *App) CheckIn() error {
 		return fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, string(msg))
 	}
 	return a.Extract()
+}
+
+func (a *App) CallInitFunctions() error {
+	for name, cb := range initFunctions {
+		log.Printf("Running %s initialization", name)
+		if err := cb(a); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -210,3 +210,19 @@ func TestCheckGood(t *testing.T) {
 		}
 	})
 }
+
+func TestInitFunctions(t *testing.T) {
+	called := false
+	initFunctions["OkComputer"] = func(app *App) error {
+		called = true
+		return nil
+	}
+	testWrapper(t, func(app *App, tempdir string) {
+		if err := app.CallInitFunctions(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !called {
+		t.Fatal("init function not called")
+	}
+}
