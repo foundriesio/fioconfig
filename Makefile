@@ -16,7 +16,7 @@ bin/fioconfig-linux-arm:
 bin/fioconfig-%: FORCE
 	GOOS=$(shell echo $* | cut -f1 -d\- ) \
 	GOARCH=$(shell echo $* | cut -f2 -d\-) \
-		go build $(LDFLAGS) -o $@ main.go
+		go build -tags vpn $(LDFLAGS) -o $@ main.go
 
 FORCE:
 

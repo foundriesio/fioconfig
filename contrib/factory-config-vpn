@@ -1,0 +1,71 @@
+#!/bin/sh -e
+
+## This is an OnChanged handler that can handle wireguard VPN config
+## files created by fioctl.
+
+vpnid="${VPN_ID-factory-vpn0}"
+
+delete_vpn() {
+	if nmcli connection | grep -q ^$vpnid ; then
+		nmcli connection delete $vpnid
+	fi
+}
+
+for x in server client ; do
+	if [ ! -f /var/run/secrets/wireguard-$x ] ; then
+		echo "No config found for this $x"
+		delete_vpn
+		exit 0
+	fi
+done
+
+. /var/run/secrets/wireguard-server
+if [ "$enabled" = "0" ] ; then
+	echo "VPN access disabled for this factory"
+	delete_vpn
+	exit 0
+fi
+server_pub=${pubkey}
+unset enabled
+
+. /var/run/secrets/wireguard-client
+if [ "$enabled" = "0" ] ; then
+	echo "VPN access disabled for this device"
+	delete_vpn
+	exit 0
+fi
+
+[ -d /etc/wireguard ] || mkdir /etc/wireguard
+
+delete_vpn
+
+nmfile="/etc/NetworkManager/system-connections/${vpnid}.nmconnection"
+cat > $nmfile <<EOF
+[connection]
+id=${vpnid}
+type=wireguard
+interface-name=${vpnid}
+permissions=
+
+[wireguard]
+private-key=$(cat /var/sota/wg-priv)
+
+[wireguard-peer.${server_pub}]
+endpoint=${endpoint}
+persistent-keepalive=${keepalive-25}
+allowed-ips=${server_address}
+
+[ipv4]
+address1=${address}
+dns-search=
+method=manual
+
+[ipv6]
+addr-gen-mode=stable-privacy
+dns-search=
+method=ignore
+EOF
+
+chmod 600 $nmfile
+nmcli conn load $nmfile
+nmcli conn up ${vpnid}
