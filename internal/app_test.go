@@ -183,7 +183,9 @@ func TestCheckGood(t *testing.T) {
 				w.WriteHeader(304)
 				return
 			}
-			w.Write(encbuf)
+			if _, err := w.Write(encbuf); err != nil {
+				t.Fatal(err)
+			}
 		}))
 		defer ts.Close()
 

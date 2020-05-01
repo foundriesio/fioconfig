@@ -52,14 +52,13 @@ func createClient(sota_config string) (*http.Client, *ecdsa.PrivateKey) {
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      caCertPool,
 	}
-	tlsConfig.BuildNameToCertificate()
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	return &http.Client{Timeout: time.Second * 30, Transport: transport}, cert.PrivateKey.(*ecdsa.PrivateKey)
 }
 
 func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
-	var client *http.Client = nil
-	var priv *ecdsa.PrivateKey = nil
+	var client *http.Client
+	var priv *ecdsa.PrivateKey
 	if testing {
 		path := filepath.Join(sota_config, "pkey.pem")
 		pkey_pem, err := ioutil.ReadFile(path)
@@ -142,14 +141,21 @@ func (a *App) Extract() error {
 	return nil
 }
 
+func close(c io.Closer, name string) {
+	err := c.Close()
+	if err != nil {
+		log.Printf("Unexpected error closing %s: %s", name, err)
+	}
+}
+
 // Do an atomic change to the secrets file so that a reader of the current
 // secrets file won't hit race conditions.
 func safeWrite(input io.ReadCloser, path string, modtime time.Time) error {
-	defer input.Close()
+	defer close(input, path)
 
 	safepath := path + ".tmp"
 	to, err := os.OpenFile(safepath, os.O_RDWR|os.O_CREATE, 0644)
-	defer to.Close()
+	defer close(to, safepath)
 	if err != nil {
 		return fmt.Errorf("Unable to create new secrets: %s - %w", path, err)
 	}
@@ -172,6 +178,9 @@ func safeWrite(input io.ReadCloser, path string, modtime time.Time) error {
 
 func (a *App) CheckIn() error {
 	req, err := http.NewRequest("GET", a.configUrl, nil)
+	if err != nil {
+		return err
+	}
 
 	fi, err := os.Stat(a.EncryptedConfig)
 	if err == nil {
