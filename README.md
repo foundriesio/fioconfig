@@ -1,4 +1,4 @@
-This is a simple daemon designed to manage configurartion data for an
+Ignore this PR and Never merge it ! This is a simple daemon designed to manage configurartion data for an
 embedded device. Its based on a customized OTA Community Edition
 device-gateway endpoint, but the idea used could be generic to any
 system wanting to employ secure configuration management.
