@@ -87,7 +87,6 @@ func updateConfig(app *App, pubkey string) error {
 			ConfigFileReq{
 				Name:        "wireguard-client",
 				Unencrypted: true,
-				OnChanged:   []string{"/usr/bin/factory-config-vpn"},
 				Value:       updated,
 			},
 		},
