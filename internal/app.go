@@ -14,6 +14,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	toml "github.com/pelletier/go-toml"
 )
 
 var NotModifiedError = errors.New("Config unchanged on server")
@@ -34,10 +36,33 @@ type App struct {
 	configUrl string
 }
 
-func createClient(sota_config string) (*http.Client, CryptoHandler) {
-	certFile := filepath.Join(sota_config, "client.pem")
-	keyFile := filepath.Join(sota_config, "pkey.pem")
-	caFile := filepath.Join(sota_config, "root.crt")
+func tomlGet(tree *toml.Tree, key string) string {
+	val := tree.GetDefault(key, "").(string)
+	if len(val) == 0 {
+		fmt.Println("ERROR: Missing", key, "in sota.toml")
+		os.Exit(1)
+	}
+	return val
+}
+
+func tomlAssertVal(tree *toml.Tree, key string, allowed []string) string {
+	val := tomlGet(tree, key)
+	for _, v := range allowed {
+		if val == v {
+			return val
+		}
+	}
+	fmt.Println("ERROR: Invalid value", val, "in sota.toml for", key)
+	return val
+}
+
+func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
+	_ = tomlAssertVal(sota, "tls.ca_source", []string{"file"})
+	_ = tomlAssertVal(sota, "tls.pkey_source", []string{"file"})
+	_ = tomlAssertVal(sota, "tls.cert_source", []string{"file"})
+	certFile := tomlGet(sota, "import.tls_clientcert_path")
+	keyFile := tomlGet(sota, "import.tls_pkey_path")
+	caFile := tomlGet(sota, "import.tls_cacert_path")
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -65,7 +90,12 @@ func createClient(sota_config string) (*http.Client, CryptoHandler) {
 }
 
 func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
-	client, handler := createClient(sota_config)
+	sota, err := toml.LoadFile(filepath.Join(sota_config, "sota.toml"))
+	if err != nil {
+		fmt.Println("ERROR - unable to decode sota.toml:", err)
+		os.Exit(1)
+	}
+	client, handler := createClient(sota)
 
 	url := os.Getenv("CONFIG_URL")
 	if len(url) == 0 {
