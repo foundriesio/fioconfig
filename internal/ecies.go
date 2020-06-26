@@ -7,16 +7,15 @@ import (
 	"fmt"
 
 	"github.com/ThalesIgnite/crypto11"
-	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
 type EciesCrypto struct {
-	PrivKey *ecies.PrivateKey
+	PrivKey *PrivateKey
 }
 
 func NewEciesLocalHandler(privKey crypto.PrivateKey) CryptoHandler {
 	if ec, ok := privKey.(*ecdsa.PrivateKey); ok {
-		return &EciesCrypto{ecies.ImportECDSA(ec)}
+		return &EciesCrypto{ImportECDSA(ec)}
 	}
 	return nil
 }

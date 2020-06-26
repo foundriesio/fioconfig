@@ -31,8 +31,7 @@
 // https://github.com/ethereum/go-ethereum/blob/02cea2330d6b4822b43a7fbaeacc12ddc8e8b1db/crypto/ecies/ecies.go
 // to work with both local private keys and pcks11 based keys
 
-
-package ecies
+package internal
 
 import (
 	"crypto/cipher"
@@ -43,7 +42,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
-	"io"
 	"math/big"
 )
 
@@ -63,11 +61,6 @@ type PublicKey struct {
 	Params *ECIESParams
 }
 
-// Export an ECIES public key as an ECDSA public key.
-func (pub *PublicKey) ExportECDSA() *ecdsa.PublicKey {
-	return &ecdsa.PublicKey{Curve: pub.Curve, X: pub.X, Y: pub.Y}
-}
-
 // Import an ECDSA public key as an ECIES public key.
 func ImportECDSAPublic(pub *ecdsa.PublicKey) *PublicKey {
 	return &PublicKey{
@@ -84,36 +77,10 @@ type PrivateKey struct {
 	D *big.Int
 }
 
-// Export an ECIES private key as an ECDSA private key.
-func (prv *PrivateKey) ExportECDSA() *ecdsa.PrivateKey {
-	pub := &prv.PublicKey
-	pubECDSA := pub.ExportECDSA()
-	return &ecdsa.PrivateKey{PublicKey: *pubECDSA, D: prv.D}
-}
-
 // Import an ECDSA private key as an ECIES private key.
 func ImportECDSA(prv *ecdsa.PrivateKey) *PrivateKey {
 	pub := ImportECDSAPublic(&prv.PublicKey)
 	return &PrivateKey{*pub, prv.D}
-}
-
-// Generate an elliptic curve public / private keypair. If params is nil,
-// the recommended default parameters for the key will be chosen.
-func GenerateKey(rand io.Reader, curve elliptic.Curve, params *ECIESParams) (prv *PrivateKey, err error) {
-	pb, x, y, err := elliptic.GenerateKey(curve, rand)
-	if err != nil {
-		return
-	}
-	prv = new(PrivateKey)
-	prv.PublicKey.X = x
-	prv.PublicKey.Y = y
-	prv.PublicKey.Curve = curve
-	prv.D = new(big.Int).SetBytes(pb)
-	if params == nil {
-		params = ParamsFromCurve(curve)
-	}
-	prv.PublicKey.Params = params
-	return
 }
 
 // MaxSharedKeyLength returns the maximum length of the shared key the
@@ -154,9 +121,15 @@ func concatKDF(hash hash.Hash, z, s1 []byte, kdLen int) []byte {
 	for counter := uint32(1); len(k) < kdLen; counter++ {
 		binary.BigEndian.PutUint32(counterBytes, counter)
 		hash.Reset()
-		hash.Write(counterBytes)
-		hash.Write(z)
-		hash.Write(s1)
+		if _, err := hash.Write(counterBytes); err != nil {
+			return nil
+		}
+		if _, err := hash.Write(z); err != nil {
+			return nil
+		}
+		if _, err := hash.Write(s1); err != nil {
+			return nil
+		}
 		k = hash.Sum(k)
 	}
 	return k[:kdLen]
@@ -170,10 +143,15 @@ func roundup(size, blocksize int) int {
 // deriveKeys creates the encryption and MAC keys using concatKDF.
 func deriveKeys(hash hash.Hash, z, s1 []byte, keyLen int) (Ke, Km []byte) {
 	K := concatKDF(hash, z, s1, 2*keyLen)
+	if K == nil {
+		return nil, nil
+	}
 	Ke = K[:keyLen]
 	Km = K[keyLen:]
 	hash.Reset()
-	hash.Write(Km)
+	if _, err := hash.Write(Km); err != nil {
+		return nil, nil
+	}
 	Km = hash.Sum(Km[:0])
 	return Ke, Km
 }
@@ -182,36 +160,14 @@ func deriveKeys(hash hash.Hash, z, s1 []byte, keyLen int) (Ke, Km []byte) {
 // SEC 1, 3.5.
 func messageTag(hash func() hash.Hash, km, msg, shared []byte) []byte {
 	mac := hmac.New(hash, km)
-	mac.Write(msg)
-	mac.Write(shared)
+	if _, err := mac.Write(msg); err != nil {
+		return nil
+	}
+	if _, err := mac.Write(shared); err != nil {
+		return nil
+	}
 	tag := mac.Sum(nil)
 	return tag
-}
-
-// Generate an initialisation vector for CTR mode.
-func generateIV(params *ECIESParams, rand io.Reader) (iv []byte, err error) {
-	iv = make([]byte, params.BlockSize)
-	_, err = io.ReadFull(rand, iv)
-	return
-}
-
-// symEncrypt carries out CTR encryption using the block cipher specified in the
-func symEncrypt(rand io.Reader, params *ECIESParams, key, m []byte) (ct []byte, err error) {
-	c, err := params.Cipher(key)
-	if err != nil {
-		return
-	}
-
-	iv, err := generateIV(params, rand)
-	if err != nil {
-		return
-	}
-	ctr := cipher.NewCTR(c, iv)
-
-	ct = make([]byte, len(m)+params.BlockSize)
-	copy(ct, iv)
-	ctr.XORKeyStream(ct[params.BlockSize:], m)
-	return
 }
 
 // symDecrypt carries out CTR decryption using the block cipher specified in
@@ -227,45 +183,6 @@ func symDecrypt(params *ECIESParams, key, ct []byte) (m []byte, err error) {
 	m = make([]byte, len(ct)-params.BlockSize)
 	ctr.XORKeyStream(m, ct[params.BlockSize:])
 	return
-}
-
-// Encrypt encrypts a message using ECIES as specified in SEC 1, 5.1.
-//
-// s1 and s2 contain shared information that is not part of the resulting
-// ciphertext. s1 is fed into key derivation, s2 is fed into the MAC. If the
-// shared information parameters aren't being used, they should be nil.
-func Encrypt(rand io.Reader, pub *PublicKey, m, s1, s2 []byte) (ct []byte, err error) {
-	params, err := pubkeyParams(pub)
-	if err != nil {
-		return nil, err
-	}
-
-	R, err := GenerateKey(rand, pub.Curve, params)
-	if err != nil {
-		return nil, err
-	}
-
-	z, err := R.GenerateShared(pub, params.KeyLen, params.KeyLen)
-	if err != nil {
-		return nil, err
-	}
-
-	hash := params.Hash()
-	Ke, Km := deriveKeys(hash, z, s1, params.KeyLen)
-
-	em, err := symEncrypt(rand, params, Ke, m)
-	if err != nil || len(em) <= params.BlockSize {
-		return nil, err
-	}
-
-	d := messageTag(params.Hash, Km, em, s2)
-
-	Rb := elliptic.Marshal(pub.Curve, R.PublicKey.X, R.PublicKey.Y)
-	ct = make([]byte, len(Rb)+len(em)+len(d))
-	copy(ct, Rb)
-	copy(ct[len(Rb):], em)
-	copy(ct[len(Rb)+len(em):], d)
-	return ct, nil
 }
 
 // Decrypt decrypts an ECIES ciphertext.
@@ -312,12 +229,17 @@ func (prv *PrivateKey) Decrypt(c, s1, s2 []byte) (m []byte, err error) {
 		return nil, err
 	}
 	Ke, Km := deriveKeys(hash, z, s1, params.KeyLen)
+	if Ke == nil || Km == nil {
+		return nil, ErrInvalidPublicKey
+	}
 
 	d := messageTag(params.Hash, Km, c[mStart:mEnd], s2)
+	if d == nil {
+		return nil, ErrInvalidMessage
+	}
 	if subtle.ConstantTimeCompare(c[mEnd:], d) != 1 {
 		return nil, ErrInvalidMessage
 	}
 
 	return symDecrypt(params, Ke, c[mStart:mEnd])
 }
-

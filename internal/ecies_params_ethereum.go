@@ -27,7 +27,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-package ecies
+package internal
 
 // This file contains parameters for ECIES encryption, specifying the
 // symmetric encryption and HMAC parameters.
@@ -134,4 +134,3 @@ func pubkeyParams(key *PublicKey) (*ECIESParams, error) {
 	}
 	return params, nil
 }
-
