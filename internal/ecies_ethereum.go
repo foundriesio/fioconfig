@@ -34,6 +34,7 @@
 package internal
 
 import (
+	"crypto"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -42,6 +43,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
+
+	"github.com/ThalesIgnite/crypto11"
 )
 
 var (
@@ -64,6 +67,23 @@ type PrivateKeyLocal struct {
 // Import an ECDSA private key as an ECIES private key.
 func ImportECDSA(prv *ecdsa.PrivateKey) *PrivateKeyLocal {
 	return &PrivateKeyLocal{prv}
+}
+
+type PrivateKeyPkcs11 struct {
+	ctx    *crypto11.Context
+	signer crypto11.Signer
+}
+
+func ImportPcks11(ctx *crypto11.Context, privKey crypto.PrivateKey) *PrivateKeyPkcs11 {
+	return &PrivateKeyPkcs11{ctx, privKey.(crypto11.Signer)}
+}
+
+func (prv *PrivateKeyPkcs11) GenerateShared(pub *ecdsa.PublicKey, skLen, macLen int) (sk []byte, err error) {
+	return prv.ctx.ECDH1Derive(prv.signer, pub)
+}
+func (prv *PrivateKeyPkcs11) Public() *ecdsa.PublicKey {
+	pub := prv.signer.Public()
+	return pub.(*ecdsa.PublicKey)
 }
 
 // MaxSharedKeyLength returns the maximum length of the shared key the

@@ -119,7 +119,7 @@ func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
 	}
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
-	return client, NewEciesPkcs11Handler(privKey)
+	return client, NewEciesPkcs11Handler(ctx, privKey)
 }
 
 func createClientLocal(sota *toml.Tree) (*http.Client, CryptoHandler) {

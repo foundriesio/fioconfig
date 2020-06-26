@@ -32,6 +32,6 @@ func (ec *EciesCrypto) Decrypt(value string) ([]byte, error) {
 	return decrypted, nil
 }
 
-func NewEciesPkcs11Handler(privKey crypto11.Signer) CryptoHandler {
-	panic("NOT IMPLEMENTED")
+func NewEciesPkcs11Handler(ctx *crypto11.Context, privKey crypto11.Signer) CryptoHandler {
+	return &EciesCrypto{ImportPcks11(ctx, privKey)}
 }
