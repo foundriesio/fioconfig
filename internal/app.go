@@ -56,10 +56,11 @@ func tomlAssertVal(tree *toml.Tree, key string, allowed []string) string {
 	return val
 }
 
-func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
-	_ = tomlAssertVal(sota, "tls.ca_source", []string{"file"})
-	_ = tomlAssertVal(sota, "tls.pkey_source", []string{"file"})
-	_ = tomlAssertVal(sota, "tls.cert_source", []string{"file"})
+func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
+	panic("TODO")
+}
+
+func createClientLocal(sota *toml.Tree) (*http.Client, CryptoHandler) {
 	certFile := tomlGet(sota, "import.tls_clientcert_path")
 	keyFile := tomlGet(sota, "import.tls_pkey_path")
 	caFile := tomlGet(sota, "import.tls_cacert_path")
@@ -87,6 +88,16 @@ func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
 		return client, handler
 	}
 	panic("Unsupported private key")
+}
+
+func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
+	_ = tomlAssertVal(sota, "tls.ca_source", []string{"file"})
+	source := tomlAssertVal(sota, "tls.pkey_source", []string{"file", "pkcs11"})
+	_ = tomlAssertVal(sota, "tls.cert_source", []string{source})
+	if source == "file" {
+		return createClientLocal(sota)
+	}
+	return createClientPkcs11(sota)
 }
 
 func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
