@@ -55,7 +55,7 @@ func encrypt(t *testing.T, config map[string]*ConfigFile) {
 	}
 }
 
-func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
+func testWrapper(t *testing.T, doGet http.HandlerFunc, testFunc func(app *App, tempdir string)) {
 	dir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Error(err)
@@ -65,6 +65,13 @@ func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 	if err := ioutil.WriteFile(filepath.Join(dir, "pkey.pem"), []byte(pkey_pem), 0644); err != nil {
 		t.Fatal(err)
 	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if doGet != nil {
+			doGet(w, r)
+		}
+	}))
+	defer ts.Close()
 
 	config := make(map[string]*ConfigFile)
 	config["foo"] = &ConfigFile{Value: "foo file value"}
@@ -84,6 +91,8 @@ func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 		t.Fatal("Encryption did not occur")
 	}
 	app, err := NewApp(dir, dir, true)
+	app.client = ts.Client()
+	app.configUrl = ts.URL
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +107,7 @@ func testWrapper(t *testing.T, testFunc func(app *App, tempdir string)) {
 }
 
 func TestUnmarshall(t *testing.T) {
-	testWrapper(t, func(app *App, tempdir string) {
+	testWrapper(t, nil, func(app *App, tempdir string) {
 		unmarshalled, err := Unmarshall(app.Crypto, app.EncryptedConfig)
 		if err != nil {
 			t.Fatal(err)
@@ -126,7 +135,7 @@ func assertFile(t *testing.T, path string, contents []byte) {
 }
 
 func TestExtract(t *testing.T) {
-	testWrapper(t, func(app *App, tempdir string) {
+	testWrapper(t, nil, func(app *App, tempdir string) {
 		if err := app.Extract(); err != nil {
 			t.Fatal(err)
 		}
@@ -150,15 +159,11 @@ func TestExtract(t *testing.T) {
 }
 
 func TestCheckBad(t *testing.T) {
-	testWrapper(t, func(app *App, tempdir string) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.NotFound(w, r)
-		}))
-		defer ts.Close()
+	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
 
-		app.client = ts.Client()
-		app.configUrl = ts.URL
-
+	testWrapper(t, doGet, func(app *App, tempdir string) {
 		err := app.CheckIn()
 		if err == nil {
 			t.Fatal("Checkin should have gotten a 404")
@@ -171,26 +176,26 @@ func TestCheckBad(t *testing.T) {
 }
 
 func TestCheckGood(t *testing.T) {
-	testWrapper(t, func(app *App, tempdir string) {
-		encbuf, err := ioutil.ReadFile(app.EncryptedConfig)
+	var encbuf []byte
+	var err error
+
+	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.Header.Get("If-Modified-Since")) > 0 {
+			w.WriteHeader(304)
+			return
+		}
+		if _, err := w.Write(encbuf); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	testWrapper(t, doGet, func(app *App, tempdir string) {
+		encbuf, err = ioutil.ReadFile(app.EncryptedConfig)
 		if err != nil {
 			t.Fatal(err)
 		}
 		// Remove this file so we can be sure the check-in creates it
 		os.Remove(app.EncryptedConfig)
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if len(r.Header.Get("If-Modified-Since")) > 0 {
-				w.WriteHeader(304)
-				return
-			}
-			if _, err := w.Write(encbuf); err != nil {
-				t.Fatal(err)
-			}
-		}))
-		defer ts.Close()
-
-		app.client = ts.Client()
-		app.configUrl = ts.URL
 
 		if err := app.CheckIn(); err != nil {
 			t.Fatal(err)
@@ -217,7 +222,7 @@ func TestInitFunctions(t *testing.T) {
 		called = true
 		return nil
 	}
-	testWrapper(t, func(app *App, tempdir string) {
+	testWrapper(t, nil, func(app *App, tempdir string) {
 		if err := app.CallInitFunctions(); err != nil {
 			t.Fatal(err)
 		}
