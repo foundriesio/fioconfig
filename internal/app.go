@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -66,28 +65,7 @@ func createClient(sota_config string) (*http.Client, CryptoHandler) {
 }
 
 func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
-	var client *http.Client = nil
-	var handler CryptoHandler
-	if testing {
-		path := filepath.Join(sota_config, "pkey.pem")
-		pkey_pem, err := ioutil.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to read private key: %v", err)
-		}
-
-		block, _ := pem.Decode(pkey_pem)
-		if block == nil {
-			return nil, fmt.Errorf("Unable to decode private key(%s): %v", path, err)
-		}
-
-		p, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to parse private key(%s): %v", path, err)
-		}
-		handler = NewEciesHandler(p)
-	} else {
-		client, handler = createClient(sota_config)
-	}
+	client, handler := createClient(sota_config)
 
 	url := os.Getenv("CONFIG_URL")
 	if len(url) == 0 {

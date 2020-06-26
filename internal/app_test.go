@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -21,16 +22,30 @@ import (
 
 const pub_pem = `
 -----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2Lk7kpRnR3lJez9536ADaNtrDYIc
-pUk69sabVt61KujrrN/57RQWfRHzc2wbU/mit/ndbbQVuYSZPlOwYKP96A==
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAENGSaBHES7xdq8daCW2yfivX1Y2VE
+fSpO4ImUGIA/IXd2VlPb0fNW+3kTKucNFsvW5k6fZxItC2KqJ28ffFiruQ==
 -----END PUBLIC KEY-----`
 
 const pkey_pem = `
 -----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg3crfB0FprBSTYR+g
-NMpyLSTSUBfiixurSy3gsgXSeDChRANCAATYuTuSlGdHeUl7P3nfoANo22sNghyl
-STr2xptW3rUq6Ous3/ntFBZ9EfNzbBtT+aK3+d1ttBW5hJk+U7Bgo/3o
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgfk24YU2ArBZ99NMX
+wO4+BmzTKzjbEGQwiVSJhqUIq1ahRANCAAQ0ZJoEcRLvF2rx1oJbbJ+K9fVjZUR9
+Kk7giZQYgD8hd3ZWU9vR81b7eRMq5w0Wy9bmTp9nEi0LYqonbx98WKu5
 -----END PRIVATE KEY-----`
+
+const client_pem = `
+-----BEGIN CERTIFICATE-----
+MIIBgjCCASmgAwIBAgIRAJjpxA3hJU0jqfFeQkV+bgcwCgYIKoZIzj0EAwIwGTEX
+MBUGA1UEAwwOb3RhLWRldmljZXMtQ0EwHhcNMjAwNjE3MTg0MjA3WhcNNDAwNjEy
+MTg0MjA3WjBBMRAwDgYDVQQLDAdkZWZhdWx0MS0wKwYDVQQDDCQ5OGU5YzQwZC1l
+MTI1LTRkMjMtYTlmMS01ZTQyNDU3ZTZlMDcwWTATBgcqhkjOPQIBBggqhkjOPQMB
+BwNCAAQ0ZJoEcRLvF2rx1oJbbJ+K9fVjZUR9Kk7giZQYgD8hd3ZWU9vR81b7eRMq
+5w0Wy9bmTp9nEi0LYqonbx98WKu5oyowKDAOBgNVHQ8BAf8EBAMCB4AwFgYDVR0l
+AQH/BAwwCgYIKwYBBQUHAwIwCgYIKoZIzj0EAwIDRwAwRAIgPD6QZGSr1svchGAW
+Jz2r/9CP9uby6JEzSrq2B0zkBewCIEKwxI/9j44n2NB8fzMOKbxAwKkI1sNTQRoJ
+LSzKq+SZ
+-----END CERTIFICATE-----
+`
 
 func encrypt(t *testing.T, config map[string]*ConfigFile) {
 	block, _ := pem.Decode([]byte(pub_pem))
@@ -62,16 +77,42 @@ func testWrapper(t *testing.T, doGet http.HandlerFunc, testFunc func(app *App, t
 	}
 	defer os.RemoveAll(dir)
 
-	if err := ioutil.WriteFile(filepath.Join(dir, "pkey.pem"), []byte(pkey_pem), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if doGet != nil {
 			doGet(w, r)
 		}
 	}))
 	defer ts.Close()
+
+	certOut, err := os.Create(filepath.Join(dir, "root.crt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: ts.TLS.Certificates[0].Certificate[0]}); err != nil {
+		t.Fatal(err)
+	}
+	certOut.Close()
+	if err := ioutil.WriteFile(filepath.Join(dir, "pkey.pem"), []byte(pkey_pem), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(filepath.Join(dir, "client.pem"), []byte(client_pem), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sota := fmt.Sprintf(`
+[tls]
+server = "%s"
+ca_source = "file"
+pkey_source = "file"
+cert_source = "file"
+
+[import]
+tls_cacert_path = "%s/root.crt"
+tls_pkey_path = "%s/pkey.pem"
+tls_clientcert_path = "%s/client.pem"
+	`, ts.URL, dir, dir, dir)
+	if err := ioutil.WriteFile(filepath.Join(dir, "sota.toml"), []byte(sota), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	config := make(map[string]*ConfigFile)
 	config["foo"] = &ConfigFile{Value: "foo file value"}
