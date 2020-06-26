@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/ThalesIgnite/crypto11"
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
@@ -13,7 +14,7 @@ type EciesCrypto struct {
 	PrivKey *ecies.PrivateKey
 }
 
-func NewEciesHandler(privKey crypto.PrivateKey) CryptoHandler {
+func NewEciesLocalHandler(privKey crypto.PrivateKey) CryptoHandler {
 	if ec, ok := privKey.(*ecdsa.PrivateKey); ok {
 		return &EciesCrypto{ecies.ImportECDSA(ec)}
 	}
@@ -30,4 +31,8 @@ func (ec *EciesCrypto) Decrypt(value string) ([]byte, error) {
 		return nil, fmt.Errorf("Unable to ECIES decrypt %v", err)
 	}
 	return decrypted, nil
+}
+
+func NewEciesPkcs11Handler(privKey crypto11.Signer) CryptoHandler {
+	panic("NOT IMPLEMENTED")
 }
