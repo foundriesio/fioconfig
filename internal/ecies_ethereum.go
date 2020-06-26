@@ -42,55 +42,42 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
-	"math/big"
 )
 
 var (
-	ErrImport                     = fmt.Errorf("ecies: failed to import key")
 	ErrInvalidCurve               = fmt.Errorf("ecies: invalid elliptic curve")
 	ErrInvalidPublicKey           = fmt.Errorf("ecies: invalid public key")
 	ErrSharedKeyIsPointAtInfinity = fmt.Errorf("ecies: shared key is point at infinity")
 	ErrSharedKeyTooBig            = fmt.Errorf("ecies: shared key params are too big")
 )
 
-// PublicKey is a representation of an elliptic curve public key.
-type PublicKey struct {
-	X *big.Int
-	Y *big.Int
-	elliptic.Curve
-	Params *ECIESParams
+type PrivateKey interface {
+	GenerateShared(pub *ecdsa.PublicKey, skLen, macLen int) (sk []byte, err error)
+	Public() *ecdsa.PublicKey
 }
 
-// Import an ECDSA public key as an ECIES public key.
-func ImportECDSAPublic(pub *ecdsa.PublicKey) *PublicKey {
-	return &PublicKey{
-		X:      pub.X,
-		Y:      pub.Y,
-		Curve:  pub.Curve,
-		Params: ParamsFromCurve(pub.Curve),
-	}
-}
-
-// PrivateKey is a representation of an elliptic curve private key.
-type PrivateKey struct {
-	PublicKey
-	D *big.Int
+// PrivateKeyLocal is a representation of an elliptic curve private key.
+type PrivateKeyLocal struct {
+	*ecdsa.PrivateKey
 }
 
 // Import an ECDSA private key as an ECIES private key.
-func ImportECDSA(prv *ecdsa.PrivateKey) *PrivateKey {
-	pub := ImportECDSAPublic(&prv.PublicKey)
-	return &PrivateKey{*pub, prv.D}
+func ImportECDSA(prv *ecdsa.PrivateKey) *PrivateKeyLocal {
+	return &PrivateKeyLocal{prv}
 }
 
 // MaxSharedKeyLength returns the maximum length of the shared key the
 // public key can produce.
-func MaxSharedKeyLength(pub *PublicKey) int {
+func MaxSharedKeyLength(pub *ecdsa.PublicKey) int {
 	return (pub.Curve.Params().BitSize + 7) / 8
 }
 
+func (prv *PrivateKeyLocal) Public() *ecdsa.PublicKey {
+	return &prv.PublicKey
+}
+
 // ECDH key agreement method used to establish secret keys for encryption.
-func (prv *PrivateKey) GenerateShared(pub *PublicKey, skLen, macLen int) (sk []byte, err error) {
+func (prv *PrivateKeyLocal) GenerateShared(pub *ecdsa.PublicKey, skLen, macLen int) (sk []byte, err error) {
 	if prv.PublicKey.Curve != pub.Curve {
 		return nil, ErrInvalidCurve
 	}
@@ -186,11 +173,12 @@ func symDecrypt(params *ECIESParams, key, ct []byte) (m []byte, err error) {
 }
 
 // Decrypt decrypts an ECIES ciphertext.
-func (prv *PrivateKey) Decrypt(c, s1, s2 []byte) (m []byte, err error) {
+func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
 	if len(c) == 0 {
 		return nil, ErrInvalidMessage
 	}
-	params, err := pubkeyParams(&prv.PublicKey)
+	pub := prv.Public()
+	params, err := pubkeyParams(pub)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +194,7 @@ func (prv *PrivateKey) Decrypt(c, s1, s2 []byte) (m []byte, err error) {
 
 	switch c[0] {
 	case 2, 3, 4:
-		rLen = (prv.PublicKey.Curve.Params().BitSize + 7) / 4
+		rLen = (pub.Curve.Params().BitSize + 7) / 4
 		if len(c) < (rLen + hLen + 1) {
 			return nil, ErrInvalidMessage
 		}
@@ -217,8 +205,8 @@ func (prv *PrivateKey) Decrypt(c, s1, s2 []byte) (m []byte, err error) {
 	mStart = rLen
 	mEnd = len(c) - hLen
 
-	R := new(PublicKey)
-	R.Curve = prv.PublicKey.Curve
+	R := new(ecdsa.PublicKey)
+	R.Curve = pub.Curve
 	R.X, R.Y = elliptic.Unmarshal(R.Curve, c[:rLen])
 	if R.X == nil {
 		return nil, ErrInvalidPublicKey
