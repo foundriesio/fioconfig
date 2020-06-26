@@ -2,10 +2,8 @@ package internal
 
 import (
 	"bytes"
-	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto/ecies"
+	toml "github.com/pelletier/go-toml"
 )
 
 var NotModifiedError = errors.New("Config unchanged on server")
@@ -25,8 +23,12 @@ var NotModifiedError = errors.New("Config unchanged on server")
 // Functions to be called when the daemon is initialized
 var initFunctions = map[string]func(app *App) error{}
 
+type CryptoHandler interface {
+	Decrypt(value string) ([]byte, error)
+}
+
 type App struct {
-	PrivKey         *ecies.PrivateKey
+	Crypto          CryptoHandler
 	EncryptedConfig string
 	SecretsDir      string
 
@@ -34,10 +36,33 @@ type App struct {
 	configUrl string
 }
 
-func createClient(sota_config string) (*http.Client, *ecdsa.PrivateKey) {
-	certFile := filepath.Join(sota_config, "client.pem")
-	keyFile := filepath.Join(sota_config, "pkey.pem")
-	caFile := filepath.Join(sota_config, "root.crt")
+func tomlGet(tree *toml.Tree, key string) string {
+	val := tree.GetDefault(key, "").(string)
+	if len(val) == 0 {
+		fmt.Println("ERROR: Missing", key, "in sota.toml")
+		os.Exit(1)
+	}
+	return val
+}
+
+func tomlAssertVal(tree *toml.Tree, key string, allowed []string) string {
+	val := tomlGet(tree, key)
+	for _, v := range allowed {
+		if val == v {
+			return val
+		}
+	}
+	fmt.Println("ERROR: Invalid value", val, "in sota.toml for", key)
+	return val
+}
+
+func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
+	_ = tomlAssertVal(sota, "tls.ca_source", []string{"file"})
+	_ = tomlAssertVal(sota, "tls.pkey_source", []string{"file"})
+	_ = tomlAssertVal(sota, "tls.cert_source", []string{"file"})
+	certFile := tomlGet(sota, "import.tls_clientcert_path")
+	keyFile := tomlGet(sota, "import.tls_pkey_path")
+	caFile := tomlGet(sota, "import.tls_cacert_path")
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -56,39 +81,29 @@ func createClient(sota_config string) (*http.Client, *ecdsa.PrivateKey) {
 		RootCAs:      caCertPool,
 	}
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	return &http.Client{Timeout: time.Second * 30, Transport: transport}, cert.PrivateKey.(*ecdsa.PrivateKey)
+	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
+
+	if handler := NewEciesHandler(cert.PrivateKey); handler != nil {
+		return client, handler
+	}
+	panic("Unsupported private key")
 }
 
 func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
-	var client *http.Client
-	var priv *ecdsa.PrivateKey
-	if testing {
-		path := filepath.Join(sota_config, "pkey.pem")
-		pkey_pem, err := ioutil.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to read private key: %v", err)
-		}
-
-		block, _ := pem.Decode(pkey_pem)
-		if block == nil {
-			return nil, fmt.Errorf("Unable to decode private key(%s): %v", path, err)
-		}
-
-		p, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to parse private key(%s): %v", path, err)
-		}
-		priv = p.(*ecdsa.PrivateKey)
-	} else {
-		client, priv = createClient(sota_config)
+	sota, err := toml.LoadFile(filepath.Join(sota_config, "sota.toml"))
+	if err != nil {
+		fmt.Println("ERROR - unable to decode sota.toml:", err)
+		os.Exit(1)
 	}
+	client, handler := createClient(sota)
 
 	url := os.Getenv("CONFIG_URL")
 	if len(url) == 0 {
 		url = "https://ota-lite.foundries.io:8443/config"
 	}
+
 	app := App{
-		PrivKey:         ecies.ImportECDSA(priv),
+		Crypto:          handler,
 		EncryptedConfig: filepath.Join(sota_config, "config.encrypted"),
 		SecretsDir:      secrets_dir,
 		client:          client,
@@ -118,7 +133,7 @@ func (a *App) Extract() error {
 	if _, err := os.Stat(a.SecretsDir); err != nil {
 		return err
 	}
-	config, err := Unmarshall(a.PrivKey, a.EncryptedConfig)
+	config, err := Unmarshall(a.Crypto, a.EncryptedConfig)
 	if err != nil {
 		return err
 	}

@@ -1,13 +1,10 @@
 package internal
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
-
-	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
 var Commit string
@@ -18,7 +15,7 @@ type ConfigFile struct {
 	Unencrypted bool
 }
 
-func Unmarshall(ecPriv *ecies.PrivateKey, encFile string) (map[string]*ConfigFile, error) {
+func Unmarshall(c CryptoHandler, encFile string) (map[string]*ConfigFile, error) {
 	content, err := ioutil.ReadFile(encFile)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to read encrypted file: %w", err)
@@ -31,13 +28,9 @@ func Unmarshall(ecPriv *ecies.PrivateKey, encFile string) (map[string]*ConfigFil
 	for fname, cfgFile := range config {
 		if !cfgFile.Unencrypted {
 			log.Printf("Decoding value of %s", fname)
-			data, err := base64.StdEncoding.DecodeString(cfgFile.Value)
+			decrypted, err := c.Decrypt(cfgFile.Value)
 			if err != nil {
-				return nil, fmt.Errorf("Unable to decode %s: %v", fname, err)
-			}
-			decrypted, err := ecPriv.Decrypt(data, nil, nil)
-			if err != nil {
-				return nil, fmt.Errorf("Unable to decrypt %s: %v", fname, err)
+				return nil, fmt.Errorf("%s: %v", fname, err)
 			}
 			cfgFile.Value = string(decrypted)
 		}
