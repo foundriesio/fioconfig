@@ -36,6 +36,7 @@ import (
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -122,12 +123,10 @@ func ParamsFromCurve(curve elliptic.Curve) (params *ECIESParams) {
 	return paramsFromCurve[curve]
 }
 
-func pubkeyParams(key *PublicKey) (*ECIESParams, error) {
-	params := key.Params
+func pubkeyParams(key *ecdsa.PublicKey) (*ECIESParams, error) {
+	params := ParamsFromCurve(key.Curve)
 	if params == nil {
-		if params = ParamsFromCurve(key.Curve); params == nil {
-			return nil, ErrUnsupportedECIESParameters
-		}
+		return nil, ErrUnsupportedECIESParameters
 	}
 	if params.KeyLen > maxKeyLen {
 		return nil, ErrInvalidKeyLen

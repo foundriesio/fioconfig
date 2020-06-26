@@ -10,7 +10,7 @@ import (
 )
 
 type EciesCrypto struct {
-	PrivKey *PrivateKey
+	PrivKey PrivateKey
 }
 
 func NewEciesLocalHandler(privKey crypto.PrivateKey) CryptoHandler {
@@ -25,7 +25,7 @@ func (ec *EciesCrypto) Decrypt(value string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Unable to base64 decode: %v", err)
 	}
-	decrypted, err := ec.PrivKey.Decrypt(data, nil, nil)
+	decrypted, err := EciesDecrypt(ec.PrivKey, data, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to ECIES decrypt %v", err)
 	}
