@@ -8,3 +8,5 @@ require (
 	github.com/pelletier/go-toml v1.8.0
 	github.com/urfave/cli/v2 v2.2.0
 )
+
+replace github.com/ThalesIgnite/crypto11 => github.com/doanac/crypto11 v1.2.2-0.20200715151421-f3d2e17ac497
