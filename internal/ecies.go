@@ -11,11 +11,12 @@ import (
 
 type EciesCrypto struct {
 	PrivKey PrivateKey
+	ctx     *crypto11.Context
 }
 
 func NewEciesLocalHandler(privKey crypto.PrivateKey) CryptoHandler {
 	if ec, ok := privKey.(*ecdsa.PrivateKey); ok {
-		return &EciesCrypto{ImportECDSA(ec)}
+		return &EciesCrypto{ImportECDSA(ec), nil}
 	}
 	return nil
 }
@@ -32,6 +33,12 @@ func (ec *EciesCrypto) Decrypt(value string) ([]byte, error) {
 	return decrypted, nil
 }
 
+func (ec *EciesCrypto) Close() {
+	if ec.ctx != nil {
+		ec.ctx.Close()
+	}
+}
+
 func NewEciesPkcs11Handler(ctx *crypto11.Context, privKey crypto11.Signer) CryptoHandler {
-	return &EciesCrypto{ImportPcks11(ctx, privKey)}
+	return &EciesCrypto{ImportPcks11(ctx, privKey), ctx}
 }
