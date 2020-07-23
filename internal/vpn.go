@@ -56,7 +56,7 @@ func generateKey(privKeyPath string) (string, error) {
 
 }
 
-func updateConfig(app *App, pubkey string) error {
+func updateConfig(app *App, client *http.Client, pubkey string) error {
 	updated := ""
 	content, err := ioutil.ReadFile(filepath.Join(app.SecretsDir, "wireguard-client"))
 	if err != nil {
@@ -100,7 +100,7 @@ func updateConfig(app *App, pubkey string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	res, err := app.client.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("Unable to update: %s - %v", app.configUrl, err)
 	}
@@ -112,7 +112,7 @@ func updateConfig(app *App, pubkey string) error {
 	return nil
 }
 
-func initVpn(app *App) error {
+func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
 	sotaConfig := filepath.Dir(app.EncryptedConfig)
 	wgPriv := filepath.Join(sotaConfig, "wg-priv")
 	if _, err := os.Stat(wgPriv); os.IsNotExist(err) {
@@ -122,7 +122,7 @@ func initVpn(app *App) error {
 			return fmt.Errorf("Unable to generate private key: %s", err)
 		}
 		log.Printf("Uploading Wireguard pub key(%s).", pub)
-		if err := updateConfig(app, pub); err != nil {
+		if err := updateConfig(app, client, pub); err != nil {
 			os.Remove(wgPriv)
 			return fmt.Errorf("Unable to server config with VPN public key: %s", err)
 		}

@@ -70,7 +70,7 @@ func encrypt(t *testing.T, config map[string]*ConfigFile) {
 	}
 }
 
-func testWrapper(t *testing.T, doGet http.HandlerFunc, testFunc func(app *App, tempdir string)) {
+func testWrapper(t *testing.T, doGet http.HandlerFunc, testFunc func(app *App, client *http.Client, tempdir string)) {
 	dir, err := ioutil.TempDir("", "")
 	if err != nil {
 		t.Error(err)
@@ -132,7 +132,6 @@ tls_clientcert_path = "%s/client.pem"
 		t.Fatal("Encryption did not occur")
 	}
 	app, err := NewApp(dir, dir, true)
-	app.client = ts.Client()
 	app.configUrl = ts.URL
 	if err != nil {
 		t.Fatal(err)
@@ -144,12 +143,14 @@ tls_clientcert_path = "%s/client.pem"
 	if err := ioutil.WriteFile(app.EncryptedConfig, b, 0644); err != nil {
 		t.Fatal(err)
 	}
-	testFunc(app, dir)
+	testFunc(app, ts.Client(), dir)
 }
 
 func TestUnmarshall(t *testing.T) {
-	testWrapper(t, nil, func(app *App, tempdir string) {
-		unmarshalled, err := Unmarshall(app.Crypto, app.EncryptedConfig)
+	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
+		_, crypto := createClient(app.sota)
+		defer crypto.Close()
+		unmarshalled, err := Unmarshall(crypto, app.EncryptedConfig)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -176,8 +177,10 @@ func assertFile(t *testing.T, path string, contents []byte) {
 }
 
 func TestExtract(t *testing.T) {
-	testWrapper(t, nil, func(app *App, tempdir string) {
-		if err := app.Extract(); err != nil {
+	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
+		_, crypto := createClient(app.sota)
+		defer crypto.Close()
+		if err := app.extract(crypto); err != nil {
 			t.Fatal(err)
 		}
 
@@ -204,8 +207,10 @@ func TestCheckBad(t *testing.T) {
 		http.NotFound(w, r)
 	})
 
-	testWrapper(t, doGet, func(app *App, tempdir string) {
-		err := app.CheckIn()
+	testWrapper(t, doGet, func(app *App, client *http.Client, tempdir string) {
+		_, crypto := createClient(app.sota)
+		defer crypto.Close()
+		err := app.checkin(client, crypto)
 		if err == nil {
 			t.Fatal("Checkin should have gotten a 404")
 		}
@@ -230,7 +235,8 @@ func TestCheckGood(t *testing.T) {
 		}
 	})
 
-	testWrapper(t, doGet, func(app *App, tempdir string) {
+	testWrapper(t, doGet, func(app *App, client *http.Client, tempdir string) {
+		_, crypto := createClient(app.sota)
 		encbuf, err = ioutil.ReadFile(app.EncryptedConfig)
 		if err != nil {
 			t.Fatal(err)
@@ -238,7 +244,7 @@ func TestCheckGood(t *testing.T) {
 		// Remove this file so we can be sure the check-in creates it
 		os.Remove(app.EncryptedConfig)
 
-		if err := app.CheckIn(); err != nil {
+		if err := app.checkin(client, crypto); err != nil {
 			t.Fatal(err)
 		}
 
@@ -251,7 +257,7 @@ func TestCheckGood(t *testing.T) {
 		assertFile(t, filepath.Join(tempdir, "random"), nil)
 
 		// Now make sure the if-not-modified logic works
-		if err := app.CheckIn(); err != NotModifiedError {
+		if err := app.checkin(client, crypto); err != NotModifiedError {
 			t.Fatal(err)
 		}
 	})
@@ -259,11 +265,11 @@ func TestCheckGood(t *testing.T) {
 
 func TestInitFunctions(t *testing.T) {
 	called := false
-	initFunctions["OkComputer"] = func(app *App) error {
+	initFunctions["OkComputer"] = func(app *App, client *http.Client, crypto CryptoHandler) error {
 		called = true
 		return nil
 	}
-	testWrapper(t, nil, func(app *App, tempdir string) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
 		if err := app.CallInitFunctions(); err != nil {
 			t.Fatal(err)
 		}

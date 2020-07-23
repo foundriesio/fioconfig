@@ -22,19 +22,19 @@ import (
 var NotModifiedError = errors.New("Config unchanged on server")
 
 // Functions to be called when the daemon is initialized
-var initFunctions = map[string]func(app *App) error{}
+var initFunctions = map[string]func(app *App, client *http.Client, crypto CryptoHandler) error{}
 
 type CryptoHandler interface {
 	Decrypt(value string) ([]byte, error)
+	Close()
 }
 
 type App struct {
-	Crypto          CryptoHandler
 	EncryptedConfig string
 	SecretsDir      string
 
-	client    *http.Client
 	configUrl string
+	sota      *toml.Tree
 }
 
 func tomlGet(tree *toml.Tree, key string) string {
@@ -79,9 +79,10 @@ func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
 	caFile := tomlGet(sota, "import.tls_cacert_path")
 
 	cfg := crypto11.Config{
-		Path:       module,
-		TokenLabel: "aktualizr",
-		Pin:        pin,
+		Path:        module,
+		TokenLabel:  "aktualizr",
+		Pin:         pin,
+		MaxSessions: 2,
 	}
 
 	ctx, err := crypto11.Configure(&cfg)
@@ -168,7 +169,9 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 		fmt.Println("ERROR - unable to decode sota.toml:", err)
 		os.Exit(1)
 	}
-	client, handler := createClient(sota)
+	// Assert we have a sane configuration
+	_, crypto := createClient(sota)
+	crypto.Close()
 
 	url := os.Getenv("CONFIG_URL")
 	if len(url) == 0 {
@@ -176,11 +179,10 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 	}
 
 	app := App{
-		Crypto:          handler,
 		EncryptedConfig: filepath.Join(sota_config, "config.encrypted"),
 		SecretsDir:      secrets_dir,
-		client:          client,
 		configUrl:       url,
+		sota:            sota,
 	}
 
 	return &app, nil
@@ -202,11 +204,11 @@ func updateSecret(secretFile string, newContent []byte) (bool, error) {
 	return true, nil
 }
 
-func (a *App) Extract() error {
+func (a *App) extract(crypto CryptoHandler) error {
 	if _, err := os.Stat(a.SecretsDir); err != nil {
 		return err
 	}
-	config, err := Unmarshall(a.Crypto, a.EncryptedConfig)
+	config, err := Unmarshall(crypto, a.EncryptedConfig)
 	if err != nil {
 		return err
 	}
@@ -230,6 +232,12 @@ func (a *App) Extract() error {
 		}
 	}
 	return nil
+}
+
+func (a *App) Extract() error {
+	_, crypto := createClient(a.sota)
+	defer crypto.Close()
+	return a.extract(crypto)
 }
 
 func close(c io.Closer, name string) {
@@ -267,7 +275,7 @@ func safeWrite(input io.ReadCloser, path string, modtime time.Time) error {
 	return nil
 }
 
-func (a *App) CheckIn() error {
+func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	req, err := http.NewRequest("GET", a.configUrl, nil)
 	if err != nil {
 		return err
@@ -280,7 +288,7 @@ func (a *App) CheckIn() error {
 		req.Header.Add("If-Modified-Since", ts)
 	}
 
-	res, err := a.client.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("Unable to get: %s - %v", a.configUrl, err)
 	}
@@ -304,13 +312,22 @@ func (a *App) CheckIn() error {
 		res.Body.Close()
 		return fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, string(msg))
 	}
-	return a.Extract()
+	return a.extract(crypto)
+}
+
+func (a *App) CheckIn() error {
+	client, crypto := createClient(a.sota)
+	defer crypto.Close()
+	return a.checkin(client, crypto)
 }
 
 func (a *App) CallInitFunctions() error {
+	client, crypto := createClient(a.sota)
+	defer crypto.Close()
+
 	for name, cb := range initFunctions {
 		log.Printf("Running %s initialization", name)
-		if err := cb(a); err != nil {
+		if err := cb(a, client, crypto); err != nil {
 			return err
 		}
 	}
