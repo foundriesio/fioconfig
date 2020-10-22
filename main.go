@@ -72,7 +72,7 @@ func daemon(c *cli.Context) error {
 func main() {
 	app := &cli.App{
 		Name:  "fioconfig",
-		Usage: "An approach to encrypted config management that would make Bruce Schneier cry",
+		Usage: "A daemon to handle configuration management for devices in a Foundries Factory",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
