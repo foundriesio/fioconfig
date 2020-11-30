@@ -5,4 +5,14 @@
 
 [ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
 cp $CONFIG_FILE /etc/sota/conf.d/
+
+# If we take control of tags/apps, then we should try and remove from sota.toml
+if grep -q "^\s*tags\s*=" $CONFIG_FILE 2>/dev/null ; then
+	sed -e '/^\s*tags\s*=/ s/^#*/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
+fi
+
+if grep -q "^\s*compose_apps\s*=" $CONFIG_FILE 2>/dev/null ; then
+	sed -e '/^\s*compose_apps\s*=/ s/^#*/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
+fi
+
 systemctl restart aktualizr-lite
