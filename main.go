@@ -122,7 +122,7 @@ func main() {
 			},
 			{
 				Name:  "version",
-				Usage: "Dispaly version of this command",
+				Usage: "Display version of this command",
 				Action: func(c *cli.Context) error {
 					fmt.Println(internal.Commit)
 					return nil
