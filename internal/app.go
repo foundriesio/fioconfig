@@ -280,6 +280,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	if err != nil {
 		return err
 	}
+	req.Close = true
 
 	fi, err := os.Stat(a.EncryptedConfig)
 	if err == nil {
