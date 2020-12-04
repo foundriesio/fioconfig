@@ -4,10 +4,12 @@
 ## files created by fioctl.
 
 vpnid="${VPN_ID-factory-vpn0}"
+nmfile="/etc/NetworkManager/system-connections/${vpnid}.nmconnection"
 
 delete_vpn() {
-	if nmcli connection | grep -q ^$vpnid ; then
-		nmcli connection delete $vpnid
+	if [ -f $nmfile ] ; then
+		rm -f $nmfile
+		nmcli conn reload
 	fi
 }
 
@@ -39,7 +41,6 @@ fi
 
 delete_vpn
 
-nmfile="/etc/NetworkManager/system-connections/${vpnid}.nmconnection"
 cat > $nmfile <<EOF
 [connection]
 id=${vpnid}
