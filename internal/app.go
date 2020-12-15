@@ -175,7 +175,7 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 
 	url := os.Getenv("CONFIG_URL")
 	if len(url) == 0 {
-		url = "https://ota-lite.foundries.io:8443/config"
+		url = sota.GetDefault("tls.server", "https://ota-lite.foundries.io:8443").(string) + "/config"
 	}
 
 	app := App{
