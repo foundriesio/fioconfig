@@ -31,6 +31,7 @@ type CryptoHandler interface {
 
 type App struct {
 	EncryptedConfig string
+	EncryptedBackup string
 	SecretsDir      string
 
 	configUrl string
@@ -181,6 +182,7 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 
 	app := App{
 		EncryptedConfig: filepath.Join(sota_config, "config.encrypted"),
+		EncryptedBackup: filepath.Join(sota_config, "config.encrypted.bak"),
 		SecretsDir:      secrets_dir,
 		configUrl:       url,
 		sota:            sota,
@@ -209,29 +211,49 @@ func (a *App) extract(crypto CryptoHandler) error {
 	if _, err := os.Stat(a.SecretsDir); err != nil {
 		return err
 	}
-	config, err := Unmarshall(crypto, a.EncryptedConfig)
+	config, err := Unmarshall(crypto, a.EncryptedConfig, true)
 	if err != nil {
 		return err
 	}
 
+	all_fname := make(map[string]bool)
 	for fname, cfgFile := range config {
 		log.Printf("Extracting %s", fname)
+		all_fname[fname] = true
 		fullpath := filepath.Join(a.SecretsDir, fname)
 		changed, err := updateSecret(fullpath, []byte(cfgFile.Value))
 		if err != nil {
 			return err
 		}
-		if changed && len(cfgFile.OnChanged) > 0 {
-			log.Printf("Running on-change command for %s: %v", fname, cfgFile.OnChanged)
-			cmd := exec.Command(cfgFile.OnChanged[0], cfgFile.OnChanged[1:]...)
-			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				log.Printf("Unable to run command: %v", err)
-			}
+		if changed {
+			runOnChanged(fname, fullpath, cfgFile.OnChanged)
 		}
 	}
+
+	// Now, watch for file removals (compare with previous version)
+	if _, err := os.Stat(a.EncryptedBackup); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		} else {
+			return err
+		}
+	}
+	prev, err := Unmarshall(nil, a.EncryptedBackup, false)
+	if err != nil {
+		return err
+	}
+	for fname, cfgFile := range prev {
+		if _, ok := all_fname[fname]; ok {
+			continue
+		}
+		log.Printf("Removing %s", fname)
+		fullpath := filepath.Join(a.SecretsDir, fname)
+		if err := os.Remove(fullpath); err != nil {
+			return err
+		}
+		runOnChanged(fname, fullpath, cfgFile.OnChanged)
+	}
+
 	return nil
 }
 
@@ -276,6 +298,19 @@ func safeWrite(input io.ReadCloser, path string, modtime time.Time) error {
 	return nil
 }
 
+func runOnChanged(fname string, fullpath string, onChanged []string) {
+	if len(onChanged) > 0 {
+		log.Printf("Running on-change command for %s: %v", fname, onChanged)
+		cmd := exec.Command(onChanged[0], onChanged[1:]...)
+		cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("Unable to run command: %v", err)
+		}
+	}
+}
+
 func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	req, err := http.NewRequest("GET", a.configUrl, nil)
 	if err != nil {
@@ -284,6 +319,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	req.Close = true
 
 	fi, err := os.Stat(a.EncryptedConfig)
+	exists := !os.IsNotExist(err)
 	if err == nil {
 		// Don't pull it down unless we need to
 		ts := fi.ModTime().UTC().Format(time.RFC1123)
@@ -295,6 +331,12 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		return fmt.Errorf("Unable to get: %s - %v", a.configUrl, err)
 	}
 	if res.StatusCode == 200 {
+		if exists {
+			if err := os.Rename(a.EncryptedConfig, a.EncryptedBackup); err != nil {
+				log.Printf("Unable to backup previous config version: %s", err)
+				return err
+			}
+		}
 		modtime, err := time.Parse(time.RFC1123, res.Header.Get("Date"))
 		if err != nil {
 			log.Printf("Unable to get modtime of config file, defaulting to 'now': %s", err)
