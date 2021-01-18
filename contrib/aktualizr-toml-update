@@ -4,6 +4,7 @@
 # It copies the toml file to /etc/sota/conf.d/ and will restart aktualizr-lite
 
 [ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
+mkdir -p -m 0700 /etc/sota/conf.d/
 cp $CONFIG_FILE /etc/sota/conf.d/
 
 # If we take control of tags/apps, then we should try and remove from sota.toml
