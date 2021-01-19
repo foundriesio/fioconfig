@@ -248,7 +248,7 @@ func (a *App) extract(crypto CryptoHandler) error {
 		}
 		log.Printf("Removing %s", fname)
 		fullpath := filepath.Join(a.SecretsDir, fname)
-		if err := os.Remove(fullpath); err != nil {
+		if err := os.Remove(fullpath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		runOnChanged(fname, fullpath, cfgFile.OnChanged)
