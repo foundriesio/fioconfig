@@ -57,9 +57,6 @@ func daemon(c *cli.Context) error {
 		return err
 	}
 	log.Printf("Running as daemon with interval %d seconds", c.Int("interval"))
-	if err := app.CallInitFunctions(); err != nil {
-		log.Println("ERROR:", err)
-	}
 	for {
 		log.Print("Checking in with server")
 		if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {

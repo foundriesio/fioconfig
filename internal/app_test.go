@@ -270,11 +270,12 @@ func TestInitFunctions(t *testing.T) {
 		return nil
 	}
 	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
-		if err := app.CallInitFunctions(); err != nil {
-			t.Fatal(err)
-		}
+		app.CallInitFunctions()
 	})
 	if !called {
 		t.Fatal("init function not called")
+	}
+	if len(initFunctions) != 0 {
+		t.Fatal("initFunctions not cleared")
 	}
 }
