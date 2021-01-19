@@ -151,7 +151,7 @@ func TestUnmarshall(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
 		_, crypto := createClient(app.sota)
 		defer crypto.Close()
-		unmarshalled, err := Unmarshall(crypto, app.EncryptedConfig, true)
+		unmarshalled, err := UnmarshallFile(crypto, app.EncryptedConfig, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,9 +189,7 @@ func assertNoFile(t *testing.T, path string) {
 
 func TestExtract(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
-		_, crypto := createClient(app.sota)
-		defer crypto.Close()
-		if err := app.extract(crypto); err != nil {
+		if err := app.Extract(); err != nil {
 			t.Fatal(err)
 		}
 
@@ -266,7 +264,6 @@ func TestCheckGood(t *testing.T) {
 		}
 		// Remove this file so we can be sure the check-in creates it
 		os.Remove(app.EncryptedConfig)
-		os.Remove(app.EncryptedBackup)
 
 		if err := app.checkin(client, crypto); err != nil {
 			t.Fatal(err)
@@ -279,7 +276,6 @@ func TestCheckGood(t *testing.T) {
 
 		// Make sure encrypted file exists
 		assertFile(t, app.EncryptedConfig, nil)
-		assertNoFile(t, app.EncryptedBackup)
 
 		// Make sure decrypted files exist
 		assertFile(t, foo, []byte("foo file value"))
@@ -308,7 +304,6 @@ func TestCheckGood(t *testing.T) {
 
 		// Make sure encrypted and backup files exist
 		assertFile(t, app.EncryptedConfig, nil)
-		assertFile(t, app.EncryptedBackup, nil)
 
 		// Make sure decrypted files exist
 		assertFile(t, foo, []byte("foo file value"))
