@@ -320,18 +320,23 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 func (a *App) CheckIn() error {
 	client, crypto := createClient(a.sota)
 	defer crypto.Close()
+	a.callInitFunctions(client, crypto)
 	return a.checkin(client, crypto)
 }
 
-func (a *App) CallInitFunctions() error {
+func (a *App) CallInitFunctions() {
 	client, crypto := createClient(a.sota)
 	defer crypto.Close()
+	a.callInitFunctions(client, crypto)
+}
 
+func (a *App) callInitFunctions(client *http.Client, crypto CryptoHandler) {
 	for name, cb := range initFunctions {
 		log.Printf("Running %s initialization", name)
 		if err := cb(a, client, crypto); err != nil {
-			return err
+			log.Println("ERROR:", err)
+		} else {
+			delete(initFunctions, name)
 		}
 	}
-	return nil
 }
