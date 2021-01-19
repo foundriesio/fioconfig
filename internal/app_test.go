@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"testing"
@@ -290,6 +291,9 @@ func TestCheckGood(t *testing.T) {
 			t.Fatal(err)
 		}
 		barChangedTime := barChangedStat.ModTime()
+
+		// modtime has a microsecond precision, but tests are so fast that even this is not enough
+		time.Sleep(1 * time.Millisecond)
 
 		// Now make sure the if-not-modified logic works
 		if err := app.checkin(client, crypto); err != NotModifiedError {
