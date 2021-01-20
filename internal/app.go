@@ -199,14 +199,23 @@ func updateSecret(secretFile string, newContent []byte) (bool, error) {
 	if err == nil && bytes.Equal(newContent, curContent) {
 		return false, nil
 	}
+	return true, safeWrite(secretFile, newContent)
+}
+
+// Do an atomic write to the file which prevents race conditions for a reader.
+// Don't worry about writer synchronization as there is only one writer to these files.
+func safeWrite(secretFile string, newContent []byte) error {
 	tmp := secretFile + ".tmp"
+	// Remove a tmp file in case of an error; this fails in success case, but that can be ignored
+	defer os.Remove(tmp)
+
 	if err := ioutil.WriteFile(tmp, newContent, 0640); err != nil {
-		return true, fmt.Errorf("Unable to create %s: %v", tmp, err)
+		return fmt.Errorf("Unable to create %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, secretFile); err != nil {
-		return true, fmt.Errorf("Unable to update secret: %s - %w", secretFile, err)
+		return fmt.Errorf("Unable to update secret: %s - %w", secretFile, err)
 	}
-	return true, nil
+	return nil
 }
 
 func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
@@ -258,32 +267,6 @@ func (a *App) Extract() error {
 	return a.extract(crypto, configSnapshot{nil, config})
 }
 
-// Do an atomic change to the secrets file so that a reader of the current
-// secrets file won't hit race conditions.
-func safeWrite(body []byte, path string, modtime time.Time) error {
-	dirname, filename := filepath.Split(path)
-	tmpfile, err := ioutil.TempFile(dirname, filename+".*.tmp")
-	if err != nil {
-		// In general we don't know a tmp file name, hopefully it should appear in error message.
-		return fmt.Errorf("Unable to create new secrets: %s - %w", path, err)
-	}
-
-	safepath := tmpfile.Name()
-	defer os.Remove(safepath)
-	defer tmpfile.Close()
-
-	if _, err = tmpfile.Write(body); err != nil {
-		return fmt.Errorf("Unable to write secrets to: %s - %w", safepath, err)
-	}
-	if err = os.Rename(safepath, path); err != nil {
-		return fmt.Errorf("Unable to link secrets to: %s - %w", path, err)
-	}
-	if err = os.Chtimes(path, modtime, modtime); err != nil {
-		return fmt.Errorf("Unable to set modified time %s - %w", path, err)
-	}
-	return nil
-}
-
 func runOnChanged(fname string, fullpath string, onChanged []string) {
 	if len(onChanged) > 0 {
 		log.Printf("Running on-change command for %s: %v", fname, onChanged)
@@ -327,14 +310,17 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 			return err
 		}
 		if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
-			log.Printf("Unable to load previous config version: %s", err)
 			var perr *os.PathError
 			if !errors.As(err, &perr) || !os.IsNotExist(perr) {
+				log.Printf("Unable to load previous config version: %s", err)
 				return err
 			}
 		}
 
 		if err = a.extract(crypto, config); err != nil {
+			return err
+		}
+		if err = safeWrite(a.EncryptedConfig, body); err != nil {
 			return err
 		}
 
@@ -343,7 +329,10 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 			log.Printf("Unable to get modtime of config file, defaulting to 'now': %s", err)
 			modtime = time.Now()
 		}
-		return safeWrite(body, a.EncryptedConfig, modtime)
+		if err = os.Chtimes(a.EncryptedConfig, modtime, modtime); err != nil {
+			return fmt.Errorf("Unable to set modified time %s - %w", a.EncryptedConfig, err)
+		}
+		return nil
 	} else if res.StatusCode == 304 {
 		log.Println("Config on server has not changed")
 		return NotModifiedError
