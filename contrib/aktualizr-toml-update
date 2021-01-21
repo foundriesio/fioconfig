@@ -4,16 +4,25 @@
 # It copies the toml file to /etc/sota/conf.d/ and will restart aktualizr-lite
 
 [ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
-mkdir -p -m 0700 /etc/sota/conf.d/
-cp $CONFIG_FILE /etc/sota/conf.d/
 
-# If we take control of tags/apps, then we should try and remove from sota.toml
-if grep -q "^\s*tags\s*=" $CONFIG_FILE 2>/dev/null ; then
-	sed -e '/^\s*tags\s*=/ s/^#*/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
-fi
+if [ -f $CONFIG_FILE ] ; then
+	mkdir -p -m 0700 /etc/sota/conf.d/
+	cp $CONFIG_FILE /etc/sota/conf.d/
 
-if grep -q "^\s*compose_apps\s*=" $CONFIG_FILE 2>/dev/null ; then
-	sed -e '/^\s*compose_apps\s*=/ s/^#*/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
+	# If we take control of tags/apps, then we should try and remove from sota.toml.
+	# Note: there is no way to surrender that control other than remove config altogether.
+	if grep -q "^\s*tags\s*=" $CONFIG_FILE 2>/dev/null ; then
+		sed -e '/^\s*tags\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
+	fi
+
+	if grep -q "^\s*compose_apps\s*=" $CONFIG_FILE 2>/dev/null ; then
+		sed -e '/^\s*compose_apps\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
+	fi
+else
+	rm -f /etc/sota/conf.d/$(basename $CONFIG_FILE)
+
+	# Restore an original control of tags/apps in sota.toml.
+	sed -e 's/^# MANAGED BY FIOCONFIG: //g' -i /var/sota/sota.toml
 fi
 
 systemctl restart aktualizr-lite

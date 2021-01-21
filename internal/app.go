@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -27,6 +26,11 @@ var initFunctions = map[string]func(app *App, client *http.Client, crypto Crypto
 type CryptoHandler interface {
 	Decrypt(value string) ([]byte, error)
 	Close()
+}
+
+type configSnapshot struct {
+	prev ConfigStruct
+	next ConfigStruct
 }
 
 type App struct {
@@ -195,85 +199,85 @@ func updateSecret(secretFile string, newContent []byte) (bool, error) {
 	if err == nil && bytes.Equal(newContent, curContent) {
 		return false, nil
 	}
-	tmp := secretFile + ".tmp"
-	if err := ioutil.WriteFile(tmp, newContent, 0640); err != nil {
-		return true, fmt.Errorf("Unable to create %s: %v", tmp, err)
-	}
-	if err := os.Rename(tmp, secretFile); err != nil {
-		return true, fmt.Errorf("Unable to update secret: %s - %w", secretFile, err)
-	}
-	return true, nil
+	return true, safeWrite(secretFile, newContent)
 }
 
-func (a *App) extract(crypto CryptoHandler) error {
+// Do an atomic write to the file which prevents race conditions for a reader.
+// Don't worry about writer synchronization as there is only one writer to these files.
+func safeWrite(secretFile string, newContent []byte) error {
+	tmp := secretFile + ".tmp"
+	// Remove a tmp file in case of an error; this fails in success case, but that can be ignored
+	defer os.Remove(tmp)
+
+	if err := ioutil.WriteFile(tmp, newContent, 0640); err != nil {
+		return fmt.Errorf("Unable to create %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, secretFile); err != nil {
+		return fmt.Errorf("Unable to update secret: %s - %w", secretFile, err)
+	}
+	return nil
+}
+
+func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
 	if _, err := os.Stat(a.SecretsDir); err != nil {
 		return err
 	}
-	config, err := Unmarshall(crypto, a.EncryptedConfig)
-	if err != nil {
-		return err
-	}
 
-	for fname, cfgFile := range config {
+	all_fname := make(map[string]bool)
+	for fname, cfgFile := range config.next {
 		log.Printf("Extracting %s", fname)
+		all_fname[fname] = true
 		fullpath := filepath.Join(a.SecretsDir, fname)
 		changed, err := updateSecret(fullpath, []byte(cfgFile.Value))
 		if err != nil {
 			return err
 		}
-		if changed && len(cfgFile.OnChanged) > 0 {
-			log.Printf("Running on-change command for %s: %v", fname, cfgFile.OnChanged)
-			cmd := exec.Command(cfgFile.OnChanged[0], cfgFile.OnChanged[1:]...)
-			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				log.Printf("Unable to run command: %v", err)
-			}
+		if changed {
+			runOnChanged(fname, fullpath, cfgFile.OnChanged)
 		}
 	}
+
+	// Now, watch for file removals (compare with a previous version if present)
+	if config.prev == nil {
+		return nil
+	}
+	for fname, cfgFile := range config.prev {
+		if _, ok := all_fname[fname]; ok {
+			continue
+		}
+		log.Printf("Removing %s", fname)
+		fullpath := filepath.Join(a.SecretsDir, fname)
+		if err := os.Remove(fullpath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		runOnChanged(fname, fullpath, cfgFile.OnChanged)
+	}
+
 	return nil
 }
 
 func (a *App) Extract() error {
 	_, crypto := createClient(a.sota)
 	defer crypto.Close()
-	return a.extract(crypto)
+
+	config, err := UnmarshallFile(crypto, a.EncryptedConfig, true)
+	if err != nil {
+		return err
+	}
+	return a.extract(crypto, configSnapshot{nil, config})
 }
 
-func close(c io.Closer, name string) {
-	err := c.Close()
-	if err != nil {
-		log.Printf("Unexpected error closing %s: %s", name, err)
+func runOnChanged(fname string, fullpath string, onChanged []string) {
+	if len(onChanged) > 0 {
+		log.Printf("Running on-change command for %s: %v", fname, onChanged)
+		cmd := exec.Command(onChanged[0], onChanged[1:]...)
+		cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("Unable to run command: %v", err)
+		}
 	}
-}
-
-// Do an atomic change to the secrets file so that a reader of the current
-// secrets file won't hit race conditions.
-func safeWrite(input io.ReadCloser, path string, modtime time.Time) error {
-	defer close(input, path)
-
-	safepath := path + ".tmp"
-	to, err := os.OpenFile(safepath, os.O_RDWR|os.O_CREATE, 0644)
-	defer close(to, safepath)
-	if err != nil {
-		return fmt.Errorf("Unable to create new secrets: %s - %w", path, err)
-	}
-
-	_, err = io.Copy(to, input)
-	if err != nil {
-		return fmt.Errorf("Unable to copy secrets to: %s - %w", path, err)
-	}
-
-	if err := os.Rename(safepath, path); err != nil {
-		return fmt.Errorf("Unable to link secrets to: %s - %w", path, err)
-	}
-
-	err = os.Chtimes(path, modtime, modtime)
-	if err != nil {
-		return fmt.Errorf("Unable to set modified time %s - %w", path, err)
-	}
-	return nil
 }
 
 func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
@@ -283,8 +287,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	}
 	req.Close = true
 
-	fi, err := os.Stat(a.EncryptedConfig)
-	if err == nil {
+	if fi, err := os.Stat(a.EncryptedConfig); err == nil {
 		// Don't pull it down unless we need to
 		ts := fi.ModTime().UTC().Format(time.RFC1123)
 		req.Header.Add("If-Modified-Since", ts)
@@ -294,15 +297,42 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	if err != nil {
 		return fmt.Errorf("Unable to get: %s - %v", a.configUrl, err)
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode == 200 {
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("Unable to read new secrets: %w", err)
+		}
+
+		var config configSnapshot
+		if config.next, err = UnmarshallBuffer(crypto, body, true); err != nil {
+			return err
+		}
+		if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
+			var perr *os.PathError
+			if !errors.As(err, &perr) || !os.IsNotExist(perr) {
+				log.Printf("Unable to load previous config version: %s", err)
+				return err
+			}
+		}
+
+		if err = a.extract(crypto, config); err != nil {
+			return err
+		}
+		if err = safeWrite(a.EncryptedConfig, body); err != nil {
+			return err
+		}
+
 		modtime, err := time.Parse(time.RFC1123, res.Header.Get("Date"))
 		if err != nil {
 			log.Printf("Unable to get modtime of config file, defaulting to 'now': %s", err)
 			modtime = time.Now()
 		}
-		if err := safeWrite(res.Body, a.EncryptedConfig, modtime); err != nil {
-			return err
+		if err = os.Chtimes(a.EncryptedConfig, modtime, modtime); err != nil {
+			return fmt.Errorf("Unable to set modified time %s - %w", a.EncryptedConfig, err)
 		}
+		return nil
 	} else if res.StatusCode == 304 {
 		log.Println("Config on server has not changed")
 		return NotModifiedError
@@ -311,10 +341,8 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		return NotModifiedError
 	} else {
 		msg, _ := ioutil.ReadAll(res.Body)
-		res.Body.Close()
 		return fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, string(msg))
 	}
-	return a.extract(crypto)
 }
 
 func (a *App) CheckIn() error {

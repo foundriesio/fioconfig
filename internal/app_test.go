@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"testing"
@@ -150,7 +151,7 @@ func TestUnmarshall(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
 		_, crypto := createClient(app.sota)
 		defer crypto.Close()
-		unmarshalled, err := Unmarshall(crypto, app.EncryptedConfig)
+		unmarshalled, err := UnmarshallFile(crypto, app.EncryptedConfig, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -176,11 +177,19 @@ func assertFile(t *testing.T, path string, contents []byte) {
 	}
 }
 
+func assertNoFile(t *testing.T, path string) {
+	if _, err := os.Stat(path); err != nil {
+		if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	} else {
+		t.Fatalf("Unexpected file exists: %s", path)
+	}
+}
+
 func TestExtract(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
-		_, crypto := createClient(app.sota)
-		defer crypto.Close()
-		if err := app.extract(crypto); err != nil {
+		if err := app.Extract(); err != nil {
 			t.Fatal(err)
 		}
 
@@ -224,13 +233,25 @@ func TestCheckBad(t *testing.T) {
 func TestCheckGood(t *testing.T) {
 	var encbuf []byte
 	var err error
+	var removeBar bool
 
 	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(r.Header.Get("If-Modified-Since")) > 0 {
+		wrtbuf := encbuf
+		if removeBar {
+			var wrtcfg map[string]*ConfigFile
+			if err := json.Unmarshal(encbuf, &wrtcfg); err != nil {
+				t.Fatal(err)
+			}
+			delete(wrtcfg, "bar")
+			wrtbuf, err = json.Marshal(wrtcfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+		} else if len(r.Header.Get("If-Modified-Since")) > 0 {
 			w.WriteHeader(304)
 			return
 		}
-		if _, err := w.Write(encbuf); err != nil {
+		if _, err := w.Write(wrtbuf); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -248,17 +269,50 @@ func TestCheckGood(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		foo := filepath.Join(tempdir, "foo")
+		bar := filepath.Join(tempdir, "bar")
+		random := filepath.Join(tempdir, "random")
+		barChanged := filepath.Join(tempdir, "bar-changed")
+
 		// Make sure encrypted file exists
 		assertFile(t, app.EncryptedConfig, nil)
 
 		// Make sure decrypted files exist
-		assertFile(t, filepath.Join(tempdir, "foo"), []byte("foo file value"))
-		assertFile(t, filepath.Join(tempdir, "bar"), []byte("bar file value"))
-		assertFile(t, filepath.Join(tempdir, "random"), nil)
+		assertFile(t, foo, []byte("foo file value"))
+		assertFile(t, bar, []byte("bar file value"))
+		assertFile(t, random, nil)
+		assertFile(t, barChanged, nil)
+		barChangedStat, err := os.Stat(barChanged)
+		if err != nil {
+			t.Fatal(err)
+		}
+		barChangedTime := barChangedStat.ModTime()
+
+		// modtime has a microsecond precision, but tests are so fast that even this is not enough
+		time.Sleep(1 * time.Millisecond)
 
 		// Now make sure the if-not-modified logic works
 		if err := app.checkin(client, crypto); err != NotModifiedError {
 			t.Fatal(err)
+		}
+
+		// Check that files removed on server are also removed on device and onChange is called
+		removeBar = true
+		if err := app.checkin(client, crypto); err != nil {
+			t.Fatal(err)
+		}
+
+		// Make sure encrypted and backup files exist
+		assertFile(t, app.EncryptedConfig, nil)
+
+		// Make sure decrypted files exist
+		assertFile(t, foo, []byte("foo file value"))
+		assertNoFile(t, bar)
+		assertFile(t, random, nil)
+		if barChangedStat, err := os.Stat(barChanged); err != nil {
+			t.Fatal(err)
+		} else if barChangedTime == barChangedStat.ModTime() {
+			t.Fatalf("A barChanged modstamp is ought to change")
 		}
 	})
 }
