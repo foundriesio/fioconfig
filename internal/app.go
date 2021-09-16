@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ThalesIgnite/crypto11"
@@ -37,8 +38,9 @@ type App struct {
 	EncryptedConfig string
 	SecretsDir      string
 
-	configUrl string
-	sota      *toml.Tree
+	configUrl      string
+	unsafeHandlers bool
+	sota           *toml.Tree
 }
 
 func tomlGet(tree *toml.Tree, key string) string {
@@ -167,7 +169,7 @@ func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
 	return createClientPkcs11(sota)
 }
 
-func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
+func NewApp(sota_config, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {
 	sota, err := toml.LoadFile(filepath.Join(sota_config, "sota.toml"))
 	if err != nil {
 		fmt.Println("ERROR - unable to decode sota.toml:", err)
@@ -188,6 +190,7 @@ func NewApp(sota_config, secrets_dir string, testing bool) (*App, error) {
 		SecretsDir:      secrets_dir,
 		configUrl:       url,
 		sota:            sota,
+		unsafeHandlers:  unsafeHandlers,
 	}
 
 	return &app, nil
@@ -233,7 +236,7 @@ func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
 			return err
 		}
 		if changed {
-			runOnChanged(fname, fullpath, cfgFile.OnChanged)
+			a.runOnChanged(fname, fullpath, cfgFile.OnChanged)
 		}
 	}
 
@@ -250,7 +253,7 @@ func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
 		if err := os.Remove(fullpath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		runOnChanged(fname, fullpath, cfgFile.OnChanged)
+		a.runOnChanged(fname, fullpath, cfgFile.OnChanged)
 	}
 
 	return nil
@@ -267,15 +270,20 @@ func (a *App) Extract() error {
 	return a.extract(crypto, configSnapshot{nil, config})
 }
 
-func runOnChanged(fname string, fullpath string, onChanged []string) {
+func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 	if len(onChanged) > 0 {
-		log.Printf("Running on-change command for %s: %v", fname, onChanged)
-		cmd := exec.Command(onChanged[0], onChanged[1:]...)
-		cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			log.Printf("Unable to run command: %v", err)
+		binary := filepath.Clean(onChanged[0])
+		if a.unsafeHandlers || strings.HasPrefix(binary, "/usr/share/fioconfig/handlers/") {
+			log.Printf("Running on-change command for %s: %v", fname, onChanged)
+			cmd := exec.Command(onChanged[0], onChanged[1:]...)
+			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				log.Printf("Unable to run command: %v", err)
+			}
+		} else {
+			log.Printf("Skipping unsafe on-change command for %s: %v.", fname, onChanged)
 		}
 	}
 }

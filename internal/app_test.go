@@ -132,7 +132,7 @@ tls_clientcert_path = "%s/client.pem"
 	if config["foo"].Value == "foo file value" {
 		t.Fatal("Encryption did not occur")
 	}
-	app, err := NewApp(dir, dir, true)
+	app, err := NewApp(dir, dir, true, true)
 	app.configUrl = ts.URL
 	if err != nil {
 		t.Fatal(err)
@@ -207,6 +207,20 @@ func TestExtract(t *testing.T) {
 		_, err := os.Stat(barChanged)
 		if !os.IsNotExist(err) {
 			t.Fatal("OnChanged called when file has not changed")
+		}
+	})
+}
+
+func TestSafeHandler(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
+		app.unsafeHandlers = false
+		if err := app.Extract(); err != nil {
+			t.Fatal(err)
+		}
+		barChanged := filepath.Join(tempdir, "bar-changed")
+		_, err := os.Stat(barChanged)
+		if err == nil {
+			t.Fatal("OnChanged called with safe handlers enabled")
 		}
 	})
 }

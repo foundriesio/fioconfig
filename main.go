@@ -12,7 +12,7 @@ import (
 )
 
 func NewApp(c *cli.Context) (*internal.App, error) {
-	return internal.NewApp(c.String("config"), c.String("secrets-dir"), false)
+	return internal.NewApp(c.String("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
 }
 
 func extract(c *cli.Context) error {
@@ -84,6 +84,11 @@ func main() {
 				Value:   "/var/run/secrets",
 				Usage:   "Location to extract configuration to",
 				EnvVars: []string{"SECRETS_DIR"},
+			},
+			&cli.BoolFlag{
+				Name:    "unsafe-handlers",
+				Usage:   "Enable running on-changed handlers defined outside of /usr/share/fioconfig/handlers/",
+				EnvVars: []string{"UNSAFE_CALLBACKS"},
 			},
 		},
 		Commands: []*cli.Command{
