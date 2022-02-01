@@ -117,14 +117,17 @@ func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
 	wgPriv := filepath.Join(sotaConfig, "wg-priv")
 	if _, err := os.Stat(wgPriv); os.IsNotExist(err) {
 		log.Println("Wireguard private key does not exist, generating.")
-		pub, err := generateKey(wgPriv)
+		wgPrivTmp := wgPriv + ".tmp"
+		pub, err := generateKey(wgPrivTmp)
 		if err != nil {
 			return fmt.Errorf("Unable to generate private key: %s", err)
 		}
 		log.Printf("Uploading Wireguard pub key(%s).", pub)
 		if err := updateConfig(app, client, pub); err != nil {
-			os.Remove(wgPriv)
 			return fmt.Errorf("Unable to server config with VPN public key: %s", err)
+		}
+		if err = os.Rename(wgPrivTmp, wgPriv); err != nil {
+			return fmt.Errorf("Unable to write wireguard private key: %s", err)
 		}
 	}
 	return nil
