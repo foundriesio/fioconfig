@@ -212,7 +212,7 @@ func safeWrite(secretFile string, newContent []byte) error {
 	// Remove a tmp file in case of an error; this fails in success case, but that can be ignored
 	defer os.Remove(tmp)
 
-	if err := ioutil.WriteFile(tmp, newContent, 0640); err != nil {
+	if err := ioutil.WriteFile(tmp, newContent, 0o640); err != nil {
 		return fmt.Errorf("Unable to create %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, secretFile); err != nil {
@@ -222,7 +222,8 @@ func safeWrite(secretFile string, newContent []byte) error {
 }
 
 func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
-	if _, err := os.Stat(a.SecretsDir); err != nil {
+	st, err := os.Stat(a.SecretsDir)
+	if err != nil {
 		return err
 	}
 
@@ -231,6 +232,10 @@ func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
 		log.Printf("Extracting %s", fname)
 		all_fname[fname] = true
 		fullpath := filepath.Join(a.SecretsDir, fname)
+		dirName := filepath.Dir(fullpath)
+		if err := os.MkdirAll(dirName, st.Mode()); err != nil {
+			return fmt.Errorf("Unable to create parent directory secret: %s - %w", fullpath, err)
+		}
 		changed, err := updateSecret(fullpath, []byte(cfgFile.Value))
 		if err != nil {
 			return err
@@ -255,7 +260,9 @@ func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
 		}
 		a.runOnChanged(fname, fullpath, cfgFile.OnChanged)
 	}
-
+	if err := DeleteEmptyDirs(a.SecretsDir); err != nil {
+		log.Printf("ERROR removing empty directories: %s", err)
+	}
 	return nil
 }
 
