@@ -300,6 +300,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	if err != nil {
 		return err
 	}
+	req.Header.Add("User-Agent", "fioconfig-client/2")
 	req.Close = true
 
 	if fi, err := os.Stat(a.EncryptedConfig); err == nil {
