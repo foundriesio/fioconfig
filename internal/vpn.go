@@ -1,3 +1,4 @@
+//go:build vpn
 // +build vpn
 
 package internal
