@@ -17,8 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
 const pub_pem = `
@@ -127,6 +128,7 @@ tls_clientcert_path = "%s/client.pem"
 		t.Fatalf("Unable to create random buffer: %v", err)
 	}
 	config["random"] = &ConfigFile{Value: base64.StdEncoding.EncodeToString(random)}
+	config["with/subdir/1.txt"] = &ConfigFile{Value: "sub"}
 
 	encrypt(t, config)
 	if config["foo"].Value == "foo file value" {
@@ -198,6 +200,7 @@ func TestExtract(t *testing.T) {
 		assertFile(t, filepath.Join(tempdir, "random"), nil)
 		barChanged := filepath.Join(tempdir, "bar-changed")
 		assertFile(t, barChanged, nil)
+		assertFile(t, filepath.Join(tempdir, "with/subdir/1.txt"), []byte("sub"))
 
 		// Make sure files that don't change aren't updated
 		os.Remove(barChanged)
@@ -257,6 +260,7 @@ func TestCheckGood(t *testing.T) {
 				t.Fatal(err)
 			}
 			delete(wrtcfg, "bar")
+			delete(wrtcfg, "with/subdir/1.txt")
 			wrtbuf, err = json.Marshal(wrtcfg)
 			if err != nil {
 				t.Fatal(err)
@@ -285,6 +289,7 @@ func TestCheckGood(t *testing.T) {
 
 		foo := filepath.Join(tempdir, "foo")
 		bar := filepath.Join(tempdir, "bar")
+		subdir := filepath.Join(tempdir, "with/subdir/1.txt")
 		random := filepath.Join(tempdir, "random")
 		barChanged := filepath.Join(tempdir, "bar-changed")
 
@@ -294,6 +299,7 @@ func TestCheckGood(t *testing.T) {
 		// Make sure decrypted files exist
 		assertFile(t, foo, []byte("foo file value"))
 		assertFile(t, bar, []byte("bar file value"))
+		assertFile(t, subdir, nil)
 		assertFile(t, random, nil)
 		assertFile(t, barChanged, nil)
 		barChangedStat, err := os.Stat(barChanged)
@@ -322,6 +328,8 @@ func TestCheckGood(t *testing.T) {
 		// Make sure decrypted files exist
 		assertFile(t, foo, []byte("foo file value"))
 		assertNoFile(t, bar)
+		assertNoFile(t, subdir)
+		assertNoFile(t, "with")
 		assertFile(t, random, nil)
 		if barChangedStat, err := os.Stat(barChanged); err != nil {
 			t.Fatal(err)
