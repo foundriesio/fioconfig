@@ -117,7 +117,7 @@ func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{
-			tls.Certificate{
+			{
 				Certificate: [][]byte{cert.Raw},
 				PrivateKey:  privKey,
 			},
