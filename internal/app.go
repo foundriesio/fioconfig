@@ -207,18 +207,25 @@ func updateSecret(secretFile string, newContent []byte) (bool, error) {
 
 // Do an atomic write to the file which prevents race conditions for a reader.
 // Don't worry about writer synchronization as there is only one writer to these files.
-func safeWrite(secretFile string, newContent []byte) error {
-	tmp := secretFile + ".tmp"
-	// Remove a tmp file in case of an error; this fails in success case, but that can be ignored
-	defer os.Remove(tmp)
+func safeWrite(name string, data []byte) error {
+	tmpfile := name + ".tmp"
+	f, err := os.OpenFile(tmpfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
+	if err != nil {
+		return fmt.Errorf("Unable to create %s: %w", name, err)
+	}
+	defer os.Remove(tmpfile)
+	_, err = f.Write(data)
+	if err1 := f.Sync(); err1 != nil && err == nil {
+		err = err1
+	}
+	if err1 := f.Close(); err1 != nil && err == nil {
+		err = err1
+	}
 
-	if err := ioutil.WriteFile(tmp, newContent, 0o640); err != nil {
-		return fmt.Errorf("Unable to create %s: %w", tmp, err)
+	if err != nil {
+		return fmt.Errorf("Unable to create %s: %w", name, err)
 	}
-	if err := os.Rename(tmp, secretFile); err != nil {
-		return fmt.Errorf("Unable to update secret: %s - %w", secretFile, err)
-	}
-	return nil
+	return os.Rename(tmpfile, name)
 }
 
 func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
