@@ -303,33 +303,22 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 }
 
 func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
-	req, err := http.NewRequest("GET", a.configUrl, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Add("User-Agent", "fioconfig-client/2")
-	req.Close = true
+	headers := make(map[string]string)
 
 	if fi, err := os.Stat(a.EncryptedConfig); err == nil {
 		// Don't pull it down unless we need to
 		ts := fi.ModTime().UTC().Format(time.RFC1123)
-		req.Header.Add("If-Modified-Since", ts)
+		headers["If-Modified-Since"] = ts
 	}
 
-	res, err := client.Do(req)
+	res, err := httpGet(client, a.configUrl, headers)
 	if err != nil {
-		return fmt.Errorf("Unable to get: %s - %v", a.configUrl, err)
+		return err // Unable to attempt request
 	}
-	defer res.Body.Close()
 
 	if res.StatusCode == 200 {
-		body, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			return fmt.Errorf("Unable to read new secrets: %w", err)
-		}
-
 		var config configSnapshot
-		if config.next, err = UnmarshallBuffer(crypto, body, true); err != nil {
+		if config.next, err = UnmarshallBuffer(crypto, res.Body, true); err != nil {
 			return err
 		}
 		if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
@@ -343,7 +332,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		if err = a.extract(crypto, config); err != nil {
 			return err
 		}
-		if err = safeWrite(a.EncryptedConfig, body); err != nil {
+		if err = safeWrite(a.EncryptedConfig, res.Body); err != nil {
 			return err
 		}
 
@@ -362,10 +351,8 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	} else if res.StatusCode == 204 {
 		log.Println("Device has no config defined on server")
 		return NotModifiedError
-	} else {
-		msg, _ := ioutil.ReadAll(res.Body)
-		return fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, string(msg))
 	}
+	return fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, res.String())
 }
 
 func (a *App) CheckIn() error {
