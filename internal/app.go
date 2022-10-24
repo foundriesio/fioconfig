@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -108,7 +107,7 @@ func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
 		log.Fatal("Unable to load pkcs11 client cert and/or private key")
 	}
 
-	caCert, err := ioutil.ReadFile(caFile)
+	caCert, err := os.ReadFile(caFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -139,7 +138,7 @@ func createClientLocal(sota *toml.Tree) (*http.Client, CryptoHandler) {
 		log.Fatal(err)
 	}
 
-	caCert, err := ioutil.ReadFile(caFile)
+	caCert, err := os.ReadFile(caFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -198,7 +197,7 @@ func NewApp(sota_config, secrets_dir string, unsafeHandlers, testing bool) (*App
 
 // Do an atomic update of the file if needed
 func updateSecret(secretFile string, newContent []byte) (bool, error) {
-	curContent, err := ioutil.ReadFile(secretFile)
+	curContent, err := os.ReadFile(secretFile)
 	if err == nil && bytes.Equal(newContent, curContent) {
 		return false, nil
 	}

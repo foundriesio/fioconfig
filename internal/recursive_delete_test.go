@@ -2,7 +2,6 @@ package internal
 
 import (
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +18,7 @@ func TestDeleteEmptyDirs(t *testing.T) {
 
 	sub2 := filepath.Join(root, "sub2")
 	require.Nil(t, os.Mkdir(sub2, 0o750))
-	require.Nil(t, ioutil.WriteFile(filepath.Join(sub2, "foo.txt"), []byte("test"), 0o700))
+	require.Nil(t, os.WriteFile(filepath.Join(sub2, "foo.txt"), []byte("test"), 0o700))
 	require.Nil(t, os.Mkdir(filepath.Join(sub2, "sub2a"), 0o750))
 	require.Nil(t, os.Mkdir(filepath.Join(sub2, "sub2b"), 0o750))
 
