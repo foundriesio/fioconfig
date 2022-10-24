@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -50,6 +51,26 @@ func httpGet(client *http.Client, url string, headers map[string]string) (*httpR
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get: %s - %w", url, err)
+	}
+	return readResponse(res)
+}
+
+func httpPatch(client *http.Client, url string, data interface{}) (*httpRes, error) {
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("User-Agent", "fioconfig-client/2")
+	req.Close = true
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to patch: %s - %w", url, err)
 	}
 	return readResponse(res)
 }

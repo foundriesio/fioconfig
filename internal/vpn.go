@@ -4,8 +4,6 @@
 package internal
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -82,7 +80,7 @@ func updateConfig(app *App, client *http.Client, pubkey string) error {
 	}
 	updated = strings.TrimSpace(updated)
 
-	data, err := json.Marshal(ConfigCreateRequest{
+	ccr := ConfigCreateRequest{
 		Reason: "Set Wireguard pubkey from fioconfig",
 		Files: []ConfigFileReq{
 			ConfigFileReq{
@@ -91,24 +89,13 @@ func updateConfig(app *App, client *http.Client, pubkey string) error {
 				Value:       updated,
 			},
 		},
-	})
+	}
+	res, err := httpPatch(client, app.configUrl, ccr)
 	if err != nil {
 		return err
-	}
-
-	req, err := http.NewRequest("PATCH", app.configUrl, bytes.NewBuffer(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("Unable to update: %s - %v", app.configUrl, err)
 	}
 	if res.StatusCode != 201 {
-		msg, _ := ioutil.ReadAll(res.Body)
-		res.Body.Close()
-		return fmt.Errorf("Unable to update: %s - HTTP_%d", app.configUrl, res.StatusCode, string(msg))
+		return fmt.Errorf("Unable to update: %s - HTTP_%d", app.configUrl, res.StatusCode, string(res.Body))
 	}
 	return nil
 }
