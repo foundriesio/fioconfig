@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 var Commit string
@@ -43,4 +47,61 @@ func UnmarshallBuffer(c CryptoHandler, encContent []byte, decrypt bool) (ConfigS
 		}
 	}
 	return config, nil
+}
+
+type ConfigFileReq struct {
+	Name        string   `json:"name"`
+	Value       string   `json:"value"`
+	Unencrypted bool     `json:"unencrypted"`
+	OnChanged   []string `json:"on-changed,omitempty"`
+}
+
+type ConfigCreateRequest struct {
+	Reason string          `json:"reason"`
+	Files  []ConfigFileReq `json:"files"`
+}
+
+func updateConfig(app *App, client *http.Client, pubkey string) error {
+	updated := ""
+	content, err := os.ReadFile(filepath.Join(app.SecretsDir, "wireguard-client"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			updated = "enabled=0\n" // This isn't enabled
+		} else {
+			return err
+		}
+	}
+	written := false
+
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "pubkey=") {
+			updated += "pubkey=" + pubkey + "\n"
+			written = true
+		} else {
+			updated += line + "\n"
+		}
+	}
+	if !written {
+		updated += "pubkey=" + pubkey + "\n"
+	}
+	updated = strings.TrimSpace(updated)
+
+	ccr := ConfigCreateRequest{
+		Reason: "Set Wireguard pubkey from fioconfig",
+		Files: []ConfigFileReq{
+			{
+				Name:        "wireguard-client",
+				Unencrypted: true,
+				Value:       updated,
+			},
+		},
+	}
+	res, err := httpPatch(client, app.configUrl, ccr)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != 201 {
+		return fmt.Errorf("Unable to update: %s - HTTP_%d: %s", app.configUrl, res.StatusCode, string(res.Body))
+	}
+	return nil
 }
