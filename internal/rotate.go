@@ -10,8 +10,14 @@ import (
 )
 
 type CertRotationState struct {
-	EstServer string
-	StepIdx   int
+	EstServer   string
+	StepIdx     int
+	PkeySlotIds []string // Available IDs we can use when generating a new key
+	CertSlotIds []string // Available IDs we can use when saving the new cert
+
+	// Used by estStep
+	NewKey  string // Path to key or HSM slot id
+	NewCert string // Path to cert or HSM slot id
 }
 
 type CertRotationHandler struct {
@@ -37,7 +43,9 @@ func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotation
 		app:       app,
 		client:    client,
 		crypto:    crypto.(*EciesCrypto),
-		steps:     []CertRotationStep{},
+		steps: []CertRotationStep{
+			&estStep{},
+		},
 	}
 }
 
@@ -91,4 +99,9 @@ func (h *CertRotationHandler) Rotate() error {
 		}
 	}
 	return os.Rename(h.stateFile, h.stateFile+".completed")
+}
+
+// useHsm detects if the handler should work with local files or PKCS11
+func (h *CertRotationHandler) usePkcs11() bool {
+	return h.crypto.ctx != nil
 }

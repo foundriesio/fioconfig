@@ -5,16 +5,17 @@ go 1.17
 require (
 	github.com/ThalesIgnite/crypto11 v1.2.1
 	github.com/ethereum/go-ethereum v1.10.15
+	github.com/miekg/pkcs11 v1.0.3-0.20190429190417-a667d056470f
 	github.com/pelletier/go-toml v1.8.0
 	github.com/stretchr/testify v1.7.0
 	github.com/urfave/cli/v2 v2.3.0
+	go.mozilla.org/pkcs7 v0.0.0-20210826202110-33d05740a352
 )
 
 require (
 	github.com/btcsuite/btcd v0.20.1-beta // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/miekg/pkcs11 v1.0.3-0.20190429190417-a667d056470f // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/russross/blackfriday/v2 v2.0.1 // indirect
