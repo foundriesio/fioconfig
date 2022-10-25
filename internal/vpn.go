@@ -4,6 +4,7 @@
 package internal
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -22,15 +23,7 @@ func generateKey(privKeyPath string) (string, error) {
 	}
 
 	cmd := exec.Command("wg", "pubkey")
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return "", err
-	}
-
-	go func() {
-		defer stdin.Close()
-		stdin.Write(pkey)
-	}()
+	cmd.Stdin = bytes.NewBuffer(pkey)
 
 	pub, err := cmd.Output()
 	if err != nil {
@@ -40,7 +33,6 @@ func generateKey(privKeyPath string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(pub)), nil
-
 }
 
 func vpnBugFix(app *App, sotaConfig string) bool {
