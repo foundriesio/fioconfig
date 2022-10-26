@@ -18,6 +18,9 @@ type CertRotationState struct {
 	// Used by estStep
 	NewKey  string // Path to key or HSM slot id
 	NewCert string // Path to cert or HSM slot id
+
+	// Used by fullCfgStep
+	FullConfigEncrypted string
 }
 
 type CertRotationHandler struct {
@@ -45,6 +48,7 @@ func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotation
 		crypto:    crypto.(*EciesCrypto),
 		steps: []CertRotationStep{
 			&estStep{},
+			&fullCfgStep{},
 		},
 	}
 }
