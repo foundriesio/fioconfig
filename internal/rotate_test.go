@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	toml "github.com/pelletier/go-toml"
 	"github.com/stretchr/testify/require"
 	"go.mozilla.org/pkcs7"
 )
@@ -224,5 +225,34 @@ func TestRotateDeviceConfig(t *testing.T) {
 		handler.State.DeviceConfigUpdated = false
 		require.Nil(t, step.Execute(handler))
 		require.Nil(t, newcfg) // We shouldn't have called PATCH /config-device
+	})
+}
+
+func TestRotateFinalize(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		app.sota.Set("storage.path", tmpdir)
+		bytes, err := app.sota.Marshal()
+		require.Nil(t, err)
+		require.Nil(t, os.WriteFile(filepath.Join(tmpdir, "sota.toml"), bytes, 0o740))
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+		handler.State.NewKey = "newkey"
+		handler.State.NewCert = "newcert"
+
+		step := finalizeStep{}
+		require.Nil(t, step.Execute(handler))
+
+		sota, err := toml.LoadFile(filepath.Join(tmpdir, "sota.toml"))
+		require.Nil(t, err)
+		bytes, err = os.ReadFile(tomlGet(sota, "import.tls_pkey_path"))
+		require.Nil(t, err)
+		require.Equal(t, "newkey", string(bytes))
+
+		bytes, err = os.ReadFile(tomlGet(sota, "import.tls_clientcert_path"))
+		require.Nil(t, err)
+		require.Equal(t, "newcert", string(bytes))
+
+		_, err = os.ReadFile(filepath.Join(tmpdir, "config.encrypted"))
+		require.Nil(t, err)
 	})
 }

@@ -24,6 +24,9 @@ type CertRotationState struct {
 
 	// Used by deviceCfgStep
 	DeviceConfigUpdated bool
+
+	// Used by finalizeStep
+	Finalized bool
 }
 
 type CertRotationHandler struct {
@@ -53,6 +56,7 @@ func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotation
 			&estStep{},
 			&fullCfgStep{},
 			&deviceCfgStep{},
+			&finalizeStep{},
 		},
 	}
 }
