@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -148,5 +149,80 @@ func TestRotateFullConfig(t *testing.T) {
 		config, err = UnmarshallBuffer(c, []byte(handler.State.FullConfigEncrypted), true)
 		require.Nil(t, err)
 		require.Equal(t, "foo file value", config["foo"].Value)
+	})
+}
+
+func TestRotateDeviceConfig(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.Nil(t, err)
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	require.Nil(t, err)
+	keyBytes = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+	pubDer, err := x509.MarshalPKIXPublicKey(key.Public())
+	require.Nil(t, err)
+	pubBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDer})
+	require.Nil(t, err)
+
+	var encbuf []byte
+	var newcfg []byte
+
+	dgHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			_, err := w.Write(encbuf)
+			require.Nil(t, err)
+			return
+		} else if r.Method == "PATCH" {
+			data, err := io.ReadAll(r.Body)
+			require.Nil(t, err)
+			var ccr ConfigCreateRequest
+			require.Nil(t, json.Unmarshal(data, &ccr))
+			cfg := make(ConfigStruct, len(ccr.Files))
+			for _, file := range ccr.Files {
+				cfg[file.Name] = &ConfigFile{
+					Value:       file.Value,
+					OnChanged:   file.OnChanged,
+					Unencrypted: file.Unencrypted,
+				}
+			}
+			newcfg, err = json.Marshal(cfg)
+			require.Nil(t, err)
+			require.Equal(t, string(pubBytes), ccr.PubKey)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	testWrapper(t, dgHandler, func(app *App, client *http.Client, tmpdir string) {
+		app.configUrl += "/"
+		encbuf, err = os.ReadFile(app.EncryptedConfig)
+		require.Nil(t, err)
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+		handler.State.NewKey = string(keyBytes)
+
+		step := deviceCfgStep{}
+
+		require.Nil(t, step.Execute(handler))
+		require.True(t, handler.State.DeviceConfigUpdated)
+
+		var config map[string]*ConfigFile
+		require.Nil(t, json.Unmarshal(newcfg, &config))
+		require.Equal(t, "bar file value", config["bar"].Value)
+		require.NotEqual(t, "foo file value", config["foo"].Value)
+
+		c := NewEciesLocalHandler(key)
+		config, err = UnmarshallBuffer(c, newcfg, true)
+		require.Nil(t, err)
+		require.Equal(t, "foo file value", config["foo"].Value)
+
+		// Now try our "resume" edge case. In this case we uploaded the new
+		// encrypted config, but we weren't able to save the state to disk.
+		// We have logic to recover from this (decrypt the config with the new
+		// new key and update the local state)
+		encbuf = newcfg
+		newcfg = nil
+		handler.State.DeviceConfigUpdated = false
+		require.Nil(t, step.Execute(handler))
+		require.Nil(t, newcfg) // We shouldn't have called PATCH /config-device
 	})
 }

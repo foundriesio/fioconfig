@@ -58,6 +58,7 @@ type ConfigFileReq struct {
 type ConfigCreateRequest struct {
 	Reason string          `json:"reason"`
 	Files  []ConfigFileReq `json:"files"`
+	PubKey string          `json:"public-key"`
 }
 
 func updateConfig(app *App, client *http.Client, pubkey string) error {
