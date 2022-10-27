@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -73,11 +72,7 @@ func encrypt(t *testing.T, config map[string]*ConfigFile) {
 }
 
 func testWrapper(t *testing.T, doGet http.HandlerFunc, testFunc func(app *App, client *http.Client, tempdir string)) {
-	dir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Error(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if doGet != nil {
@@ -94,10 +89,10 @@ func testWrapper(t *testing.T, doGet http.HandlerFunc, testFunc func(app *App, c
 		t.Fatal(err)
 	}
 	certOut.Close()
-	if err := ioutil.WriteFile(filepath.Join(dir, "pkey.pem"), []byte(pkey_pem), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "pkey.pem"), []byte(pkey_pem), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "client.pem"), []byte(client_pem), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "client.pem"), []byte(client_pem), 0644); err != nil {
 		t.Fatal(err)
 	}
 	sota := fmt.Sprintf(`
@@ -112,7 +107,7 @@ tls_cacert_path = "%s/root.crt"
 tls_pkey_path = "%s/pkey.pem"
 tls_clientcert_path = "%s/client.pem"
 	`, ts.URL, dir, dir, dir)
-	if err := ioutil.WriteFile(filepath.Join(dir, "sota.toml"), []byte(sota), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "sota.toml"), []byte(sota), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,7 +138,7 @@ tls_clientcert_path = "%s/client.pem"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(app.EncryptedConfig, b, 0644); err != nil {
+	if err := os.WriteFile(app.EncryptedConfig, b, 0644); err != nil {
 		t.Fatal(err)
 	}
 	testFunc(app, ts.Client(), dir)
@@ -170,7 +165,7 @@ func TestUnmarshall(t *testing.T) {
 }
 
 func assertFile(t *testing.T, path string, contents []byte) {
-	buff, err := ioutil.ReadFile(path)
+	buff, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +271,7 @@ func TestCheckGood(t *testing.T) {
 
 	testWrapper(t, doGet, func(app *App, client *http.Client, tempdir string) {
 		_, crypto := createClient(app.sota)
-		encbuf, err = ioutil.ReadFile(app.EncryptedConfig)
+		encbuf, err = os.ReadFile(app.EncryptedConfig)
 		if err != nil {
 			t.Fatal(err)
 		}

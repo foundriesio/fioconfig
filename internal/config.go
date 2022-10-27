@@ -3,7 +3,6 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -22,7 +21,7 @@ type ConfigFile struct {
 type ConfigStruct = map[string]*ConfigFile
 
 func UnmarshallFile(c CryptoHandler, encFile string, decrypt bool) (ConfigStruct, error) {
-	content, err := ioutil.ReadFile(encFile)
+	content, err := os.ReadFile(encFile)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to read encrypted file: %w", err)
 	}
