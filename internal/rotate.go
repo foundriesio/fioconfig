@@ -113,6 +113,34 @@ func (h *CertRotationHandler) Rotate() error {
 	return os.Rename(h.stateFile, h.stateFile+".completed")
 }
 
+// ResumeRotation checks if we have an incomplete cert rotation. If so, it
+// will attempt to complete this rotation. The main reason this would happen
+// is if a power failure occurred during `.Rotate`
+func (h *CertRotationHandler) ResumeRotation(online bool) error {
+	if !online {
+		// There's not much we can do because most rotation steps require
+		// network access. However `fioconfig extract` runs at early boot and
+		// needs help with one specific condition: the finalizeStep was able to
+		// update sota.toml but didn't update config.encrypted. In this case
+		// we can complete that one step locally and be good.
+		if h.State.DeviceConfigUpdated && !h.State.Finalized {
+			log.Print("Incomplete certificate rotation state found. Will attempt to complete")
+			step := finalizeStep{}
+			if err := step.finalizeConfigEncrypted(h); err != nil {
+				return err
+			}
+			// By calling save and not renaming the file .completed, `.Rotate`
+			// will get called when online and we'll be able to emit a completion
+			// event to the device gateway
+			return h.Save()
+		}
+		log.Print("Incomplete certificate rotation state found.")
+		return nil
+	}
+	log.Print("Incomplete certificate rotation state found. Will attempt to complete")
+	return h.Rotate()
+}
+
 // useHsm detects if the handler should work with local files or PKCS11
 func (h *CertRotationHandler) usePkcs11() bool {
 	return h.crypto.ctx != nil

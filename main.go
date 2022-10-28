@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/foundriesio/fioconfig/internal"
@@ -12,7 +14,20 @@ import (
 )
 
 func NewApp(c *cli.Context) (*internal.App, error) {
-	return internal.NewApp(c.String("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
+	app, err := internal.NewApp(c.String("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
+	if err != nil {
+		return nil, err
+	}
+	if c.Command.Name == "renew-cert" {
+		return app, nil
+	}
+	stateFile := filepath.Join(c.String("config"), "cert-rotation.state")
+	handler := internal.RestoreCertRotationHandler(app, stateFile)
+	if handler != nil {
+		online := c.Command.Name != "extract"
+		err = handler.ResumeRotation(online)
+	}
+	return app, err
 }
 
 func extract(c *cli.Context) error {
@@ -64,6 +79,29 @@ func daemon(c *cli.Context) error {
 		}
 		time.Sleep(interval)
 	}
+}
+
+func renewCert(c *cli.Context) error {
+	app, err := NewApp(c)
+	if err != nil {
+		return err
+	}
+	if c.NArg() != 1 {
+		cli.ShowCommandHelpAndExit(c, "renew-cert", 1)
+	}
+	server := c.Args().Get(0)
+	stateFile := filepath.Join(c.String("config"), "cert-rotation.state")
+	handler := internal.NewCertRotationHandler(app, stateFile, server)
+	idsStr := c.String("pkcs11-key-ids")
+	handler.State.PkeySlotIds = strings.Split(idsStr, ",")
+	idsStr = c.String("pkcs11-cert-ids")
+	handler.State.CertSlotIds = strings.Split(idsStr, ",")
+
+	log.Printf("Performing certificate renewal")
+	if err = handler.Rotate(); err == nil {
+		log.Print("Certificate rotation sequence complete")
+	}
+	return err
 }
 
 func main() {
@@ -119,6 +157,26 @@ func main() {
 						Value:   300,
 						Usage:   "Interval in seconds for checking in for updates",
 						EnvVars: []string{"DAEMON_INTERVAL"},
+					},
+				},
+			},
+			{
+				Name:     "renew-cert",
+				HelpName: "renew-cert <EST Server>",
+				Usage:    "Renew device's TLS keypair used with device-gateway",
+				Action: func(c *cli.Context) error {
+					return renewCert(c)
+				},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "pkcs11-key-ids",
+						Value: "01,07",
+						Usage: "The two pkcs11 slot IDs to use for private keys",
+					},
+					&cli.StringFlag{
+						Name:  "pkcs11-cert-ids",
+						Value: "03,09",
+						Usage: "The two pkcs11 slot IDs to use for client certificates",
 					},
 				},
 			},

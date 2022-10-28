@@ -49,7 +49,12 @@ func (s finalizeStep) Execute(handler *CertRotationHandler) error {
 	if err = safeWrite(path, bytes); err != nil {
 		return fmt.Errorf("Unable to update sota.toml with new cert locations: %w", err)
 	}
-	path = filepath.Join(storagePath, "config.encrypted")
+	return s.finalizeConfigEncrypted(handler)
+}
+
+func (s finalizeStep) finalizeConfigEncrypted(handler *CertRotationHandler) error {
+	storagePath := tomlGet(handler.app.sota, "storage.path")
+	path := filepath.Join(storagePath, "config.encrypted")
 	if err := safeWrite(path, []byte(handler.State.FullConfigEncrypted)); err != nil {
 		return fmt.Errorf("Error updating config.encrypted: %w", err)
 	}
