@@ -290,6 +290,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			log.Printf("Running on-change command for %s: %v", fname, onChanged)
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
+			cmd.Env = append(cmd.Env, "SOTA_DIR="+tomlGet(a.sota, "storage.path"))
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
