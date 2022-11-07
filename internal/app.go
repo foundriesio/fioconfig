@@ -85,7 +85,7 @@ func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
 
 	cfg := crypto11.Config{
 		Path:        module,
-		TokenLabel:  "aktualizr",
+		TokenLabel:  sota.GetDefault("p11.label", "aktualizr").(string),
 		Pin:         pin,
 		MaxSessions: 2,
 	}

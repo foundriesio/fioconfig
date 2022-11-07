@@ -63,11 +63,13 @@ func encrypt(t *testing.T, config map[string]*ConfigFile) {
 	eciesPub := ecies.ImportECDSAPublic(ecpub)
 
 	for fname, cfgFile := range config {
-		enc, err := ecies.Encrypt(rand.Reader, eciesPub, []byte(cfgFile.Value), nil, nil)
-		if err != nil {
-			t.Fatalf("Unable to encrypt %s: %s", fname, err)
+		if !cfgFile.Unencrypted {
+			enc, err := ecies.Encrypt(rand.Reader, eciesPub, []byte(cfgFile.Value), nil, nil)
+			if err != nil {
+				t.Fatalf("Unable to encrypt %s: %s", fname, err)
+			}
+			cfgFile.Value = base64.StdEncoding.EncodeToString(enc)
 		}
-		cfgFile.Value = base64.StdEncoding.EncodeToString(enc)
 	}
 }
 
@@ -114,8 +116,9 @@ tls_clientcert_path = "%s/client.pem"
 	config := make(map[string]*ConfigFile)
 	config["foo"] = &ConfigFile{Value: "foo file value"}
 	config["bar"] = &ConfigFile{
-		Value:     "bar file value",
-		OnChanged: []string{"/usr/bin/touch", filepath.Join(dir, "bar-changed")},
+		Value:       "bar file value",
+		OnChanged:   []string{"/usr/bin/touch", filepath.Join(dir, "bar-changed")},
+		Unencrypted: true,
 	}
 	random := make([]byte, 1024) // 1MB random file
 	_, err = rand.Read(random)
@@ -128,6 +131,9 @@ tls_clientcert_path = "%s/client.pem"
 	encrypt(t, config)
 	if config["foo"].Value == "foo file value" {
 		t.Fatal("Encryption did not occur")
+	}
+	if config["bar"].Value != "bar file value" {
+		t.Fatal("Encryption of bar should not have occurred")
 	}
 	app, err := NewApp(dir, dir, true, true)
 	app.configUrl = ts.URL

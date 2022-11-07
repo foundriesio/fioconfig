@@ -3,10 +3,12 @@ package internal
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/ethereum/go-ethereum/crypto/ecies"
 )
 
 type EciesCrypto struct {
@@ -31,6 +33,15 @@ func (ec *EciesCrypto) Decrypt(value string) ([]byte, error) {
 		return nil, fmt.Errorf("Unable to ECIES decrypt %v", err)
 	}
 	return decrypted, nil
+}
+
+func (ec *EciesCrypto) Encrypt(value string) (string, error) {
+	pub := ecies.ImportECDSAPublic(ec.PrivKey.Public())
+	enc, err := ecies.Encrypt(rand.Reader, pub, []byte(value), nil, nil)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(enc), nil
 }
 
 func (ec *EciesCrypto) Close() {
