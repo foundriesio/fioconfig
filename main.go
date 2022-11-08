@@ -86,7 +86,7 @@ func renewCert(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if c.NArg() != 1 {
+	if c.NArg() != 1 && c.NArg() != 2 {
 		cli.ShowCommandHelpAndExit(c, "renew-cert", 1)
 	}
 	server := c.Args().Get(0)
@@ -96,6 +96,10 @@ func renewCert(c *cli.Context) error {
 	handler.State.PkeySlotIds = strings.Split(idsStr, ",")
 	idsStr = c.String("pkcs11-cert-ids")
 	handler.State.CertSlotIds = strings.Split(idsStr, ",")
+
+	if c.NArg() == 2 {
+		handler.State.RotationId = c.Args().Get(1)
+	}
 
 	log.Printf("Performing certificate renewal")
 	if err = handler.Rotate(); err == nil {
@@ -162,7 +166,7 @@ func main() {
 			},
 			{
 				Name:     "renew-cert",
-				HelpName: "renew-cert <EST Server>",
+				HelpName: "renew-cert <EST Server> [<rotation-id>]",
 				Usage:    "Renew device's TLS keypair used with device-gateway",
 				Action: func(c *cli.Context) error {
 					return renewCert(c)

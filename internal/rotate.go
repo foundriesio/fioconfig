@@ -11,6 +11,7 @@ import (
 
 type CertRotationState struct {
 	EstServer   string
+	RotationId  string // A unique ID to identify this rotation operation with
 	StepIdx     int
 	PkeySlotIds []string // Available IDs we can use when generating a new key
 	CertSlotIds []string // Available IDs we can use when saving the new cert
