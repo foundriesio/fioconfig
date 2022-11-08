@@ -126,7 +126,7 @@ func (h *CertRotationHandler) ResumeRotation(online bool) error {
 		if h.State.DeviceConfigUpdated && !h.State.Finalized {
 			log.Print("Incomplete certificate rotation state found. Will attempt to complete")
 			step := finalizeStep{}
-			if err := step.finalizeConfigEncrypted(h); err != nil {
+			if err := step.Execute(h); err != nil {
 				return err
 			}
 			// By calling save and not renaming the file .completed, `.Rotate`
