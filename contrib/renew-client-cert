@@ -1,0 +1,61 @@
+#!/bin/sh -e
+
+# This is an OnChanged handler that can handle requests to renew the client
+# certificates used by the device to connect to the device gateway
+
+[ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
+[ -f "$CONFIG_FILE" ] || (echo "$CONFIG_FILE does not exist"; exit 1)
+[ -z "$SOTA_DIR" ] && (echo "No SOTA_DIR specified"; exit 1)
+[ -d "$SOTA_DIR" ] || (echo "$SOTA_DIR does not exist"; exit 1)
+
+fioconfig=$(which fioconfig)
+
+rotation_id=$(cat $CONFIG_FILE | grep ROTATIONID | cut -d= -f2)
+[ -z "$rotation_id" ] && (echo "No ROTATIONID found in config file"; exit 1)
+echo "Rotation ID for rotation is $rotation_id"
+
+est_server=$(cat $CONFIG_FILE | grep ESTSERVER | cut -d= -f2)
+[ -z "$est_server" ] && (echo "No ESTSERVER found in config file"; exit 1)
+echo "EST server for rotation is $est_server"
+
+# We need to toggle between two different pkcs11 slot ids to rotate on HSMs:
+pkey_ids=$(cat $CONFIG_FILE | grep PKEYIDS | cut -d= -f2)
+if [ -n "$pkey_ids" ]; then
+	echo "PKCS11 key IDs: ${pkey_ids}"
+fi
+cert_ids=$(cat $CONFIG_FILE | grep CERTIDS | cut -d= -f2)
+if [ -n "$cert_ids" ]; then
+	echo "PKCS11 cert IDs: ${cert_ids}"
+fi
+
+rotate() {
+	extra_args=""
+	if [ -n "$pkey_ids" ]; then
+		extra_args="--pkcs11-key-ids=$pkey_ids"
+	fi
+	if [ -n "$cert_ids" ]; then
+		extra_args="$extra_args --pkcs11-cert-ids=$cert_ids"
+	fi
+	exec $fioconfig -c $SOTA_DIR renew-cert $extra_args $est_server $rotation_id 
+}
+
+# We'll execute under two conditions:
+# 1) A cert rotation has never taken place (cert-rotation.state.completed does not exist)
+# 2) We need to do a new rotation ($rotation_id != cert-rotation.state.completed's RotationId)
+
+active_file="${SOTA_DIR}/cert-rotation.state"
+completed_file="${active_file}.completed"
+
+if [ ! -f "$completed_file" ] ; then
+	echo "Rotating certs: cert-rotation.state.completed does not exist"
+	rotate
+fi
+
+idmatch=$(grep -Po '"RotationId":.*?[^\\]",' $completed_file)
+completed_id=$(echo $idmatch | cut -d\"  -f4)
+if [ "$completed_id" !=  "$rotation_id" ] ; then
+	echo "Rotating certs: Rotation ID has changed from $completed_id -> $rotation_id"
+	rotate
+fi
+
+echo "Rotation not needed. Current rotation ID is $rotation_id"

@@ -108,7 +108,10 @@ cert_source = "file"
 tls_cacert_path = "%s/root.crt"
 tls_pkey_path = "%s/pkey.pem"
 tls_clientcert_path = "%s/client.pem"
-	`, ts.URL, dir, dir, dir)
+
+[storage]
+path = "%s"
+	`, ts.URL, dir, dir, dir, dir)
 	if err := os.WriteFile(filepath.Join(dir, "sota.toml"), []byte(sota), 0644); err != nil {
 		t.Fatal(err)
 	}
