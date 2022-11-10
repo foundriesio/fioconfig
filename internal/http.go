@@ -36,41 +36,41 @@ func readResponse(r *http.Response) (*httpRes, error) {
 	return res, nil
 }
 
-func httpGet(client *http.Client, url string, headers map[string]string) (*httpRes, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func httpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*httpRes, error) {
+	var dataBytes []byte
+	if data != nil {
+		var err error
+		dataBytes, err = json.Marshal(data)
+		if err != nil {
+			return nil, err
+		}
+	}
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(dataBytes))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("User-Agent", "fioconfig-client/2")
-	req.Close = true
-
+	req.Header.Add("Content-Type", "application/json")
 	for k, v := range headers {
 		req.Header.Add(k, v)
 	}
+	req.Close = true
 
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to get: %s - %w", url, err)
+		return nil, fmt.Errorf("Unable to %s: %s - %w", method, url, err)
 	}
 	return readResponse(res)
 }
 
-func httpPatch(client *http.Client, url string, data interface{}) (*httpRes, error) {
-	dataBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(dataBytes))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("User-Agent", "fioconfig-client/2")
-	req.Close = true
+func httpGet(client *http.Client, url string, headers map[string]string) (*httpRes, error) {
+	return httpDo(client, http.MethodGet, url, headers, nil)
+}
 
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to patch: %s - %w", url, err)
-	}
-	return readResponse(res)
+func httpPatch(client *http.Client, url string, data interface{}) (*httpRes, error) {
+	return httpDo(client, http.MethodPatch, url, nil, data)
+}
+
+func httpPost(client *http.Client, url string, data interface{}) (*httpRes, error) {
+	return httpDo(client, http.MethodPost, url, nil, data)
 }
