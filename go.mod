@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/ThalesIgnite/crypto11 v1.2.5
 	github.com/ethereum/go-ethereum v1.10.15
+	github.com/google/uuid v1.1.5
 	github.com/miekg/pkcs11 v1.0.3-0.20190429190417-a667d056470f
 	github.com/pelletier/go-toml v1.8.0
 	github.com/stretchr/testify v1.7.0

@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 )
 
 type CertRotationState struct {
@@ -36,6 +38,7 @@ type CertRotationHandler struct {
 	app       *App
 	client    *http.Client
 	crypto    *EciesCrypto
+	eventSync EventSync
 	steps     []CertRotationStep
 }
 
@@ -46,6 +49,13 @@ type CertRotationStep interface {
 
 // NewCertRotationHandler constructs a new handler to initiate a rotation with
 func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotationHandler {
+	eventUrl := tomlGet(app.sota, "tls.server") + "/events"
+
+	target, err := LoadCurrentTarget(filepath.Join(tomlGet(app.sota, "storage.path"), "current-target"))
+	if err != nil {
+		log.Printf("Unable to parse current-target. Events posted to server will be missing content: %s", err)
+	}
+
 	client, crypto := createClient(app.sota)
 	return &CertRotationHandler{
 		State:     CertRotationState{EstServer: estServer},
@@ -53,6 +63,11 @@ func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotation
 		app:       app,
 		client:    client,
 		crypto:    crypto.(*EciesCrypto),
+		eventSync: &DgEventSync{
+			client: client,
+			url:    eventUrl,
+			target: target,
+		},
 		steps: []CertRotationStep{
 			&estStep{},
 			&lockStep{},
@@ -93,9 +108,18 @@ func (h *CertRotationHandler) Save() error {
 }
 
 func (h *CertRotationHandler) Rotate() error {
+	if len(h.State.RotationId) == 0 {
+		h.State.RotationId = fmt.Sprintf("certs-%d", time.Now().Unix())
+		log.Printf("Setting default rotation id to: %s", h.State.RotationId)
+	}
+	h.eventSync.SetCorrelationId(h.State.RotationId)
+	var err error
+	defer h.eventSync.NotifyCompleted(err)
+	h.eventSync.NotifyStarted()
+
 	// Before we even start - we should save our initial state (ie EstServer)
 	// and also make sure we *can* save our state.
-	if err := h.Save(); err != nil {
+	if err = h.Save(); err != nil {
 		return fmt.Errorf("Unable to save initial state: %w", err)
 	}
 	for idx, step := range h.steps {
@@ -103,16 +127,19 @@ func (h *CertRotationHandler) Rotate() error {
 			log.Printf("Step already completed: %s", step.Name())
 		} else {
 			log.Printf("Executing step: %s", step.Name())
-			if err := step.Execute(h); err != nil {
+			if err = step.Execute(h); err != nil {
+				h.eventSync.NotifyStep(step.Name(), err)
 				return err
 			}
 			h.State.StepIdx += 1
-			if saveErr := h.Save(); saveErr != nil {
-				return fmt.Errorf("Unable to save state: %w", saveErr)
+			h.eventSync.NotifyStep(step.Name(), nil)
+			if err = h.Save(); err != nil {
+				return fmt.Errorf("Unable to save state: %w", err)
 			}
 		}
 	}
-	return os.Rename(h.stateFile, h.stateFile+".completed")
+	err = os.Rename(h.stateFile, h.stateFile+".completed")
+	return err
 }
 
 // ResumeRotation checks if we have an incomplete cert rotation. If so, it
