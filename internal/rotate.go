@@ -55,6 +55,7 @@ func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotation
 		crypto:    crypto.(*EciesCrypto),
 		steps: []CertRotationStep{
 			&estStep{},
+			&lockStep{},
 			&fullCfgStep{},
 			&deviceCfgStep{},
 			&finalizeStep{},

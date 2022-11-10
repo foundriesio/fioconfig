@@ -153,6 +153,46 @@ func TestRotateFullConfig(t *testing.T) {
 	})
 }
 
+func TestRotateLock(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.Nil(t, err)
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	require.Nil(t, err)
+	keyBytes = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+	pubDer, err := x509.MarshalPKIXPublicKey(key.Public())
+	require.Nil(t, err)
+	pubBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDer})
+	require.Nil(t, err)
+
+	called := false
+
+	dgHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PATCH" {
+			data, err := io.ReadAll(r.Body)
+			require.Nil(t, err)
+			var du DeviceUpdate
+			require.Nil(t, json.Unmarshal(data, &du))
+
+			require.Equal(t, string(pubBytes), du.NextPubKey)
+			called = true
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	testWrapper(t, dgHandler, func(app *App, client *http.Client, tmpdir string) {
+		app.configUrl += "/"
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+		handler.State.NewKey = string(keyBytes)
+
+		step := lockStep{}
+
+		require.Nil(t, step.Execute(handler))
+		require.True(t, called)
+	})
+}
+
 func TestRotateDeviceConfig(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.Nil(t, err)
