@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"time"
 )
 
 type httpRes struct {
@@ -36,7 +38,7 @@ func readResponse(r *http.Response) (*httpRes, error) {
 	return res, nil
 }
 
-func httpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*httpRes, error) {
+func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data interface{}) (*httpRes, error) {
 	var dataBytes []byte
 	if data != nil {
 		var err error
@@ -61,6 +63,22 @@ func httpDo(client *http.Client, method, url string, headers map[string]string, 
 		return nil, fmt.Errorf("Unable to %s: %s - %w", method, url, err)
 	}
 	return readResponse(res)
+}
+
+func httpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*httpRes, error) {
+	var err error
+	var res *httpRes
+	for _, delay := range []int{0, 1, 2, 5, 13, 30} {
+		if delay != 0 {
+			log.Printf("HTTP %s to %s failed, trying again in %d seconds", url, method, delay)
+			time.Sleep(time.Second * time.Duration(delay))
+		}
+		res, err = httpDoOnce(client, method, url, headers, data)
+		if err == nil && res.StatusCode != 0 && res.StatusCode < 500 {
+			break
+		}
+	}
+	return res, err
 }
 
 func httpGet(client *http.Client, url string, headers map[string]string) (*httpRes, error) {
