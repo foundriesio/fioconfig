@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/coreos/go-systemd/v22/dbus"
 )
 
 type CertRotationState struct {
@@ -40,6 +43,7 @@ type CertRotationHandler struct {
 	crypto    *EciesCrypto
 	eventSync EventSync
 	steps     []CertRotationStep
+	cienv     bool
 }
 
 type CertRotationStep interface {
@@ -139,6 +143,12 @@ func (h *CertRotationHandler) Rotate() error {
 		}
 	}
 	err = os.Rename(h.stateFile, h.stateFile+".completed")
+
+	// restart aklite and fioconfig *after* being "complete". Otherwise,
+	// we could wind up in a loop of: try-to-complete-rotation,
+	// restart-ourself-before marking complete
+	h.RestartServices()
+
 	return err
 }
 
@@ -173,4 +183,32 @@ func (h *CertRotationHandler) ResumeRotation(online bool) error {
 // useHsm detects if the handler should work with local files or PKCS11
 func (h *CertRotationHandler) usePkcs11() bool {
 	return h.crypto.ctx != nil
+}
+
+func (h *CertRotationHandler) RestartServices() {
+	if h.cienv {
+		fmt.Println("Skipping systemctl restarts for CI")
+		return
+	}
+
+	ctx := context.Background()
+	con, err := dbus.NewSystemConnectionContext(ctx)
+	if err != nil {
+		log.Fatalf("Unable to connect to DBUS for service restarts: %s", err)
+	}
+
+	for _, svc := range []string{"aktualizr-lite.service", "fioconfig.service"} {
+		restartChan := make(chan string)
+		_, err = con.RestartUnitContext(ctx, svc, "replace", restartChan)
+		if err != nil {
+			log.Fatalf("Unable to restart: %s, %s", svc, err)
+		}
+		result := <-restartChan
+		switch result {
+		case "done":
+			continue
+		default:
+			log.Fatalf("Error restarting %s: %s", svc, result)
+		}
+	}
 }

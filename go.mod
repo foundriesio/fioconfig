@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/ThalesIgnite/crypto11 v1.2.5
+	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/ethereum/go-ethereum v1.10.15
 	github.com/google/uuid v1.1.5
 	github.com/miekg/pkcs11 v1.0.3-0.20190429190417-a667d056470f
@@ -17,6 +18,7 @@ require (
 	github.com/btcsuite/btcd v0.20.1-beta // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/godbus/dbus/v5 v5.0.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/russross/blackfriday/v2 v2.0.1 // indirect
