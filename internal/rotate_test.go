@@ -77,6 +77,7 @@ func TestRotationHandler(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
 		stateFile := filepath.Join(tmpdir, "rotate.state")
 		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+		handler.eventSync = NoOpEventSync{}
 
 		handler.steps = []CertRotationStep{
 			&testStep{"step1", nil},
