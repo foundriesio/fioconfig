@@ -54,7 +54,7 @@ if [ ! -f "$completed_file" ] ; then
 	rotate
 fi
 
-idmatch=$(grep -Po '"RotationId":.*?[^\\]",' $completed_file)
+idmatch=$(grep -Po '"RotationId":.*?[^\\]",' $completed_file || true)
 completed_id=$(echo $idmatch | cut -d\"  -f4)
 if [ "$completed_id" !=  "$rotation_id" ] ; then
 	echo "Rotating certs: Rotation ID has changed from $completed_id -> $rotation_id"
