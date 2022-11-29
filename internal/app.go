@@ -284,6 +284,10 @@ func (a *App) Extract() error {
 }
 
 func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
+	path, err := os.Readlink("/proc/self/exe")
+	if err != nil {
+		log.Printf("Unable to find path to self via /proc/self/exe: %s", err)
+	}
 	if len(onChanged) > 0 {
 		binary := filepath.Clean(onChanged[0])
 		if a.unsafeHandlers || strings.HasPrefix(binary, "/usr/share/fioconfig/handlers/") {
@@ -291,6 +295,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
 			cmd.Env = append(cmd.Env, "SOTA_DIR="+tomlGet(a.sota, "storage.path"))
+			cmd.Env = append(cmd.Env, "FIOCONFIG_BIN="+path)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {

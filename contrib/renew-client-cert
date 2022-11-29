@@ -8,7 +8,10 @@
 [ -z "$SOTA_DIR" ] && (echo "No SOTA_DIR specified"; exit 1)
 [ -d "$SOTA_DIR" ] || (echo "$SOTA_DIR does not exist"; exit 1)
 
-fioconfig=$(which fioconfig)
+fioconfig="$FIOCONFIG_BIN"
+if [ -z "$fioconfig" ] ; then
+	fioconfig=$(which fioconfig)
+fi
 
 rotation_id=$(cat $CONFIG_FILE | grep ROTATIONID | cut -d= -f2)
 [ -z "$rotation_id" ] && (echo "No ROTATIONID found in config file"; exit 1)
@@ -51,7 +54,7 @@ if [ ! -f "$completed_file" ] ; then
 	rotate
 fi
 
-idmatch=$(grep -Po '"RotationId":.*?[^\\]",' $completed_file)
+idmatch=$(grep -Po '"RotationId":.*?[^\\]",' $completed_file || true)
 completed_id=$(echo $idmatch | cut -d\"  -f4)
 if [ "$completed_id" !=  "$rotation_id" ] ; then
 	echo "Rotating certs: Rotation ID has changed from $completed_id -> $rotation_id"

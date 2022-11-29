@@ -78,6 +78,7 @@ func TestRotationHandler(t *testing.T) {
 		stateFile := filepath.Join(tmpdir, "rotate.state")
 		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
 		handler.eventSync = NoOpEventSync{}
+		handler.cienv = true
 
 		handler.steps = []CertRotationStep{
 			&testStep{"step1", nil},
@@ -96,6 +97,7 @@ func TestRotationHandler(t *testing.T) {
 		}
 		require.NotNil(t, handler.Rotate())
 		handler = RestoreCertRotationHandler(app, stateFile)
+		handler.cienv = true
 		require.NotNil(t, handler)
 		require.Equal(t, "est-server-doesn't-matter", handler.State.EstServer)
 
