@@ -41,32 +41,33 @@ import (
 	"crypto/hmac"
 	"crypto/subtle"
 	"encoding/binary"
-	"fmt"
 	"hash"
 
 	"github.com/ThalesIgnite/crypto11"
-)
-
-var (
-	ErrInvalidCurve               = fmt.Errorf("ecies: invalid elliptic curve")
-	ErrInvalidPublicKey           = fmt.Errorf("ecies: invalid public key")
-	ErrSharedKeyIsPointAtInfinity = fmt.Errorf("ecies: shared key is point at infinity")
-	ErrSharedKeyTooBig            = fmt.Errorf("ecies: shared key params are too big")
+	"github.com/umbracle/ecies"
 )
 
 type PrivateKey interface {
-	GenerateShared(pub *ecdsa.PublicKey, skLen, macLen int) (sk []byte, err error)
+	GenerateShared(pub *ecies.PublicKey, skLen, macLen int) (sk []byte, err error)
 	Public() *ecdsa.PublicKey
 }
 
 // PrivateKeyLocal is a representation of an elliptic curve private key.
 type PrivateKeyLocal struct {
-	*ecdsa.PrivateKey
+	*ecies.PrivateKey
 }
 
 // Import an ECDSA private key as an ECIES private key.
 func ImportECDSA(prv *ecdsa.PrivateKey) *PrivateKeyLocal {
-	return &PrivateKeyLocal{prv}
+	return &PrivateKeyLocal{ecies.ImportECDSA(prv)}
+}
+
+func (prv *PrivateKeyLocal) GenerateShared(pub *ecies.PublicKey, skLen, macLen int) (sk []byte, err error) {
+	return prv.PrivateKey.GenerateShared(pub, skLen, macLen)
+}
+
+func (prv *PrivateKeyLocal) Public() *ecdsa.PublicKey {
+	return prv.PublicKey.ExportECDSA()
 }
 
 type PrivateKeyPkcs11 struct {
@@ -78,48 +79,14 @@ func ImportPcks11(ctx *crypto11.Context, privKey crypto.PrivateKey) *PrivateKeyP
 	return &PrivateKeyPkcs11{ctx, privKey.(crypto11.Signer)}
 }
 
-func (prv *PrivateKeyPkcs11) GenerateShared(pub *ecdsa.PublicKey, skLen, macLen int) (sk []byte, err error) {
-	return prv.ctx.ECDH1Derive(prv.signer, pub)
+func (prv *PrivateKeyPkcs11) GenerateShared(pub *ecies.PublicKey, skLen, macLen int) (sk []byte, err error) {
+	return prv.ctx.ECDH1Derive(prv.signer, pub.ExportECDSA())
 }
+
 func (prv *PrivateKeyPkcs11) Public() *ecdsa.PublicKey {
 	pub := prv.signer.Public()
 	return pub.(*ecdsa.PublicKey)
 }
-
-// MaxSharedKeyLength returns the maximum length of the shared key the
-// public key can produce.
-func MaxSharedKeyLength(pub *ecdsa.PublicKey) int {
-	return (pub.Curve.Params().BitSize + 7) / 8
-}
-
-func (prv *PrivateKeyLocal) Public() *ecdsa.PublicKey {
-	return &prv.PublicKey
-}
-
-// ECDH key agreement method used to establish secret keys for encryption.
-func (prv *PrivateKeyLocal) GenerateShared(pub *ecdsa.PublicKey, skLen, macLen int) (sk []byte, err error) {
-	if prv.PublicKey.Curve != pub.Curve {
-		return nil, ErrInvalidCurve
-	}
-	if skLen+macLen > MaxSharedKeyLength(pub) {
-		return nil, ErrSharedKeyTooBig
-	}
-
-	x, _ := pub.Curve.ScalarMult(pub.X, pub.Y, prv.D.Bytes())
-	if x == nil {
-		return nil, ErrSharedKeyIsPointAtInfinity
-	}
-
-	sk = make([]byte, skLen+macLen)
-	skBytes := x.Bytes()
-	copy(sk[len(sk)-len(skBytes):], skBytes)
-	return sk, nil
-}
-
-var (
-	ErrSharedTooLong  = fmt.Errorf("ecies: shared secret is too long")
-	ErrInvalidMessage = fmt.Errorf("ecies: invalid message")
-)
 
 // NIST SP 800-56 Concatenation Key Derivation Function (see section 5.8.1).
 func concatKDF(hash hash.Hash, z, s1 []byte, kdLen int) []byte {
@@ -179,7 +146,7 @@ func messageTag(hash func() hash.Hash, km, msg, shared []byte) []byte {
 
 // symDecrypt carries out CTR decryption using the block cipher specified in
 // the parameters
-func symDecrypt(params *ECIESParams, key, ct []byte) (m []byte, err error) {
+func symDecrypt(params *ecies.ECIESParams, key, ct []byte) (m []byte, err error) {
 	c, err := params.Cipher(key)
 	if err != nil {
 		return
@@ -195,14 +162,13 @@ func symDecrypt(params *ECIESParams, key, ct []byte) (m []byte, err error) {
 // Decrypt decrypts an ECIES ciphertext.
 func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
 	if len(c) == 0 {
-		return nil, ErrInvalidMessage
+		return nil, ecies.ErrInvalidMessage
 	}
 	pub := prv.Public()
-	params, err := pubkeyParams(pub)
-	if err != nil {
-		return nil, err
+	params := ecies.ParamsFromCurve(pub.Curve)
+	if params == nil {
+		return nil, ecies.ErrUnsupportedECIESParameters
 	}
-
 	hash := params.Hash()
 
 	var (
@@ -216,20 +182,24 @@ func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
 	case 2, 3, 4:
 		rLen = (pub.Curve.Params().BitSize + 7) / 4
 		if len(c) < (rLen + hLen + 1) {
-			return nil, ErrInvalidMessage
+			return nil, ecies.ErrInvalidMessage
 		}
 	default:
-		return nil, ErrInvalidPublicKey
+		return nil, ecies.ErrInvalidPublicKey
 	}
 
 	mStart = rLen
 	mEnd = len(c) - hLen
 
-	R := new(ecdsa.PublicKey)
+	R := new(ecies.PublicKey)
 	R.Curve = pub.Curve
 	R.X, R.Y = elliptic.Unmarshal(R.Curve, c[:rLen])
 	if R.X == nil {
-		return nil, ErrInvalidPublicKey
+		return nil, ecies.ErrInvalidPublicKey
+	}
+	if !R.Curve.IsOnCurve(R.X, R.Y) {
+		err = ecies.ErrInvalidCurve
+		return
 	}
 
 	z, err := prv.GenerateShared(R, params.KeyLen, params.KeyLen)
@@ -238,15 +208,15 @@ func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
 	}
 	Ke, Km := deriveKeys(hash, z, s1, params.KeyLen)
 	if Ke == nil || Km == nil {
-		return nil, ErrInvalidPublicKey
+		return nil, ecies.ErrInvalidPublicKey
 	}
 
 	d := messageTag(params.Hash, Km, c[mStart:mEnd], s2)
 	if d == nil {
-		return nil, ErrInvalidMessage
+		return nil, ecies.ErrInvalidMessage
 	}
 	if subtle.ConstantTimeCompare(c[mEnd:], d) != 1 {
-		return nil, ErrInvalidMessage
+		return nil, ecies.ErrInvalidMessage
 	}
 
 	return symDecrypt(params, Ke, c[mStart:mEnd])
