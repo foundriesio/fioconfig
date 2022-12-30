@@ -18,7 +18,7 @@ import (
 
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto/ecies"
+	"github.com/umbracle/ecies"
 )
 
 const pub_pem = `

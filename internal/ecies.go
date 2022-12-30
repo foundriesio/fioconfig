@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/ThalesIgnite/crypto11"
-	"github.com/ethereum/go-ethereum/crypto/ecies"
+	"github.com/umbracle/ecies"
 )
 
 type EciesCrypto struct {
