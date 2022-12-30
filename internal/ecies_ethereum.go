@@ -49,7 +49,7 @@ import (
 
 type PrivateKey interface {
 	GenerateShared(pub *ecies.PublicKey, skLen, macLen int) (sk []byte, err error)
-	Public() *ecdsa.PublicKey
+	Public() *ecies.PublicKey
 }
 
 // PrivateKeyLocal is a representation of an elliptic curve private key.
@@ -66,26 +66,28 @@ func (prv *PrivateKeyLocal) GenerateShared(pub *ecies.PublicKey, skLen, macLen i
 	return prv.PrivateKey.GenerateShared(pub, skLen, macLen)
 }
 
-func (prv *PrivateKeyLocal) Public() *ecdsa.PublicKey {
-	return prv.PublicKey.ExportECDSA()
+func (prv *PrivateKeyLocal) Public() *ecies.PublicKey {
+	return &prv.PublicKey
 }
 
 type PrivateKeyPkcs11 struct {
+	*ecies.PublicKey
 	ctx    *crypto11.Context
 	signer crypto11.Signer
 }
 
 func ImportPcks11(ctx *crypto11.Context, privKey crypto.PrivateKey) *PrivateKeyPkcs11 {
-	return &PrivateKeyPkcs11{ctx, privKey.(crypto11.Signer)}
+	signer := privKey.(crypto11.Signer)
+	pub := signer.Public().(*ecdsa.PublicKey)
+	return &PrivateKeyPkcs11{ecies.ImportECDSAPublic(pub), ctx, signer}
 }
 
 func (prv *PrivateKeyPkcs11) GenerateShared(pub *ecies.PublicKey, skLen, macLen int) (sk []byte, err error) {
 	return prv.ctx.ECDH1Derive(prv.signer, pub.ExportECDSA())
 }
 
-func (prv *PrivateKeyPkcs11) Public() *ecdsa.PublicKey {
-	pub := prv.signer.Public()
-	return pub.(*ecdsa.PublicKey)
+func (prv *PrivateKeyPkcs11) Public() *ecies.PublicKey {
+	return prv.PublicKey
 }
 
 // NIST SP 800-56 Concatenation Key Derivation Function (see section 5.8.1).
@@ -165,9 +167,11 @@ func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
 		return nil, ecies.ErrInvalidMessage
 	}
 	pub := prv.Public()
-	params := ecies.ParamsFromCurve(pub.Curve)
+	params := pub.Params
 	if params == nil {
-		return nil, ecies.ErrUnsupportedECIESParameters
+		if params = ecies.ParamsFromCurve(pub.Curve); params == nil {
+			return nil, ecies.ErrUnsupportedECIESParameters
+		}
 	}
 	hash := params.Hash()
 
