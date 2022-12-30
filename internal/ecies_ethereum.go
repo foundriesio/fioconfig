@@ -35,16 +35,16 @@ package internal
 
 import (
 	"crypto"
-	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/hmac"
 	"crypto/subtle"
-	"encoding/binary"
 	"hash"
+	"io"
 
 	"github.com/ThalesIgnite/crypto11"
 	"github.com/umbracle/ecies"
+
+	_ "unsafe"
 )
 
 type PrivateKey interface {
@@ -91,30 +91,9 @@ func (prv *PrivateKeyPkcs11) Public() *ecies.PublicKey {
 }
 
 // NIST SP 800-56 Concatenation Key Derivation Function (see section 5.8.1).
-func concatKDF(hash hash.Hash, z, s1 []byte, kdLen int) []byte {
-	counterBytes := make([]byte, 4)
-	k := make([]byte, 0, roundup(kdLen, hash.Size()))
-	for counter := uint32(1); len(k) < kdLen; counter++ {
-		binary.BigEndian.PutUint32(counterBytes, counter)
-		hash.Reset()
-		if _, err := hash.Write(counterBytes); err != nil {
-			return nil
-		}
-		if _, err := hash.Write(z); err != nil {
-			return nil
-		}
-		if _, err := hash.Write(s1); err != nil {
-			return nil
-		}
-		k = hash.Sum(k)
-	}
-	return k[:kdLen]
-}
-
-// roundup rounds size up to the next multiple of blocksize.
-func roundup(size, blocksize int) int {
-	return size + blocksize - (size % blocksize)
-}
+//
+//go:linkname concatKDF github.com/umbracle/ecies.concatKDF
+func concatKDF(hash hash.Hash, z, s1 []byte, kdLen int) []byte
 
 // deriveKeys creates the encryption and MAC keys using concatKDF.
 func deriveKeys(hash hash.Hash, z, s1 []byte, keyLen int) (Ke, Km []byte) {
@@ -132,34 +111,15 @@ func deriveKeys(hash hash.Hash, z, s1 []byte, keyLen int) (Ke, Km []byte) {
 	return Ke, Km
 }
 
-// messageTag computes the MAC of a message (called the tag) as per
-// SEC 1, 3.5.
-func messageTag(hash func() hash.Hash, km, msg, shared []byte) []byte {
-	mac := hmac.New(hash, km)
-	if _, err := mac.Write(msg); err != nil {
-		return nil
-	}
-	if _, err := mac.Write(shared); err != nil {
-		return nil
-	}
-	tag := mac.Sum(nil)
-	return tag
-}
+// messageTag computes the MAC of a message (called the tag) as per SEC 1, 3.5.
+//
+//go:linkname messageTag github.com/umbracle/ecies.messageTag
+func messageTag(hash func() hash.Hash, km, msg, shared []byte) []byte
 
-// symDecrypt carries out CTR decryption using the block cipher specified in
-// the parameters
-func symDecrypt(params *ecies.ECIESParams, key, ct []byte) (m []byte, err error) {
-	c, err := params.Cipher(key)
-	if err != nil {
-		return
-	}
-
-	ctr := cipher.NewCTR(c, ct[:params.BlockSize])
-
-	m = make([]byte, len(ct)-params.BlockSize)
-	ctr.XORKeyStream(m, ct[params.BlockSize:])
-	return
-}
+// symDecrypt carries out CTR decryption using the block cipher specified in the parameters
+//
+//go:linkname symDecrypt github.com/umbracle/ecies.symDecrypt
+func symDecrypt(rand io.Reader, params *ecies.ECIESParams, key, ct []byte) (m []byte, err error)
 
 // Decrypt decrypts an ECIES ciphertext.
 func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
@@ -210,6 +170,7 @@ func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
+
 	Ke, Km := deriveKeys(hash, z, s1, params.KeyLen)
 	if Ke == nil || Km == nil {
 		return nil, ecies.ErrInvalidPublicKey
@@ -223,5 +184,6 @@ func EciesDecrypt(prv PrivateKey, c, s1, s2 []byte) (m []byte, err error) {
 		return nil, ecies.ErrInvalidMessage
 	}
 
-	return symDecrypt(params, Ke, c[mStart:mEnd])
+	// rand is unused below, but mandatory per some legacy interface
+	return symDecrypt(nil, params, Ke, c[mStart:mEnd])
 }
