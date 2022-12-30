@@ -28,7 +28,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // This is forked from:
-// https://github.com/ethereum/go-ethereum/blob/02cea2330d6b4822b43a7fbaeacc12ddc8e8b1db/crypto/ecies/ecies.go
+// https://github.com/umbracle/ecies/blob/ea9736114760d3b81d07dd6b7aec3a3634d80702/ecies.go
 // to work with both local private keys and pcks11 based keys
 
 package internal
