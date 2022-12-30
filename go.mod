@@ -1,6 +1,6 @@
 module github.com/foundriesio/fioconfig
 
-go 1.17
+go 1.19
 
 require (
 	github.com/ThalesIgnite/crypto11 v1.2.5
