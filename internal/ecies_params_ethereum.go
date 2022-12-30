@@ -40,23 +40,13 @@ import (
 	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/sha512"
-	"fmt"
+	"errors"
 	"hash"
-
-	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
-	DefaultCurve                  = ethcrypto.S256()
-	ErrUnsupportedECDHAlgorithm   = fmt.Errorf("ecies: unsupported ECDH algorithm")
-	ErrUnsupportedECIESParameters = fmt.Errorf("ecies: unsupported ECIES parameters")
-	ErrInvalidKeyLen              = fmt.Errorf("ecies: invalid key size (> %d) in ECIESParams", maxKeyLen)
+	ErrUnsupportedECIESParameters = errors.New("ecies: unsupported ECIES parameters")
 )
-
-// KeyLen is limited to prevent overflow of the counter
-// in concatKDF. While the theoretical limit is much higher,
-// no known cipher uses keys larger than 512 bytes.
-const maxKeyLen = 512
 
 type ECIESParams struct {
 	Hash      func() hash.Hash // hash function
@@ -66,11 +56,8 @@ type ECIESParams struct {
 	KeyLen    int                                // length of symmetric key
 }
 
-// Standard ECIES parameters:
-// * ECIES using AES128 and HMAC-SHA-256-16
-// * ECIES using AES256 and HMAC-SHA-256-32
-// * ECIES using AES256 and HMAC-SHA-384-48
-// * ECIES using AES256 and HMAC-SHA-512-64
+// Until now the lmp-device-register only ever generated P256 keys (OpenSSL prime256v1).
+// Support a few bigger keys (natively supported by Golang) for the forward-compatibility.
 
 var (
 	ECIES_AES128_SHA256 = &ECIESParams{
@@ -79,14 +66,6 @@ var (
 		Cipher:    aes.NewCipher,
 		BlockSize: aes.BlockSize,
 		KeyLen:    16,
-	}
-
-	ECIES_AES256_SHA256 = &ECIESParams{
-		Hash:      sha256.New,
-		hashAlgo:  crypto.SHA256,
-		Cipher:    aes.NewCipher,
-		BlockSize: aes.BlockSize,
-		KeyLen:    32,
 	}
 
 	ECIES_AES256_SHA384 = &ECIESParams{
@@ -107,29 +86,15 @@ var (
 )
 
 var paramsFromCurve = map[elliptic.Curve]*ECIESParams{
-	ethcrypto.S256(): ECIES_AES128_SHA256,
-	elliptic.P256():  ECIES_AES128_SHA256,
-	elliptic.P384():  ECIES_AES256_SHA384,
-	elliptic.P521():  ECIES_AES256_SHA512,
+	elliptic.P256(): ECIES_AES128_SHA256,
+	elliptic.P384(): ECIES_AES256_SHA384,
+	elliptic.P521(): ECIES_AES256_SHA512,
 }
 
-func AddParamsForCurve(curve elliptic.Curve, params *ECIESParams) {
-	paramsFromCurve[curve] = params
-}
-
-// ParamsFromCurve selects parameters optimal for the selected elliptic curve.
-// Only the curves P256, P384, and P512 are supported.
-func ParamsFromCurve(curve elliptic.Curve) (params *ECIESParams) {
-	return paramsFromCurve[curve]
-}
-
-func pubkeyParams(key *ecdsa.PublicKey) (*ECIESParams, error) {
-	params := ParamsFromCurve(key.Curve)
+func pubkeyParams(key *ecdsa.PublicKey) (params *ECIESParams, err error) {
+	params = paramsFromCurve[key.Curve]
 	if params == nil {
-		return nil, ErrUnsupportedECIESParameters
+		err = ErrUnsupportedECIESParameters
 	}
-	if params.KeyLen > maxKeyLen {
-		return nil, ErrInvalidKeyLen
-	}
-	return params, nil
+	return
 }
