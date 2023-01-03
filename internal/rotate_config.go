@@ -51,8 +51,8 @@ func (s deviceCfgStep) Execute(handler *CertRotationHandler) error {
 		return err
 	}
 	defer crypto.Close()
-	crypto.PrivKey.Public()
-	pubDer, err := x509.MarshalPKIXPublicKey(crypto.PrivKey.Public())
+	pub := crypto.PrivKey.Public()
+	pubDer, err := x509.MarshalPKIXPublicKey(pub.ExportECDSA())
 	if err != nil {
 		return err
 	}

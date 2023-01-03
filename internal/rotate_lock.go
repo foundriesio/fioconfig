@@ -24,7 +24,7 @@ func (s lockStep) Execute(handler *CertRotationHandler) error {
 	pub := crypto.PrivKey.Public()
 	crypto.Close()
 
-	pubBytes, err := x509.MarshalPKIXPublicKey(pub)
+	pubBytes, err := x509.MarshalPKIXPublicKey(pub.ExportECDSA())
 	if err != nil {
 		return err
 	}

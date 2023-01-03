@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/ThalesIgnite/crypto11"
-	"github.com/ethereum/go-ethereum/crypto/ecies"
+	"github.com/umbracle/ecies"
 )
 
 type EciesCrypto struct {
@@ -36,8 +36,7 @@ func (ec *EciesCrypto) Decrypt(value string) ([]byte, error) {
 }
 
 func (ec *EciesCrypto) Encrypt(value string) (string, error) {
-	pub := ecies.ImportECDSAPublic(ec.PrivKey.Public())
-	enc, err := ecies.Encrypt(rand.Reader, pub, []byte(value), nil, nil)
+	enc, err := ecies.Encrypt(rand.Reader, ec.PrivKey.Public(), []byte(value), nil, nil)
 	if err != nil {
 		return "", err
 	}
