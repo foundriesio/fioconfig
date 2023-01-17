@@ -10,6 +10,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/foundriesio/crypto11 v0.0.0-20221104185643-b2344c63166b h1:Xr35KrPaa1lit2ugzsu8R9oYFcoi7djleGBX2wSxJ6I=
 github.com/foundriesio/crypto11 v0.0.0-20221104185643-b2344c63166b/go.mod h1:ILDKtnCKiQ7zRoNxcp36Y1ZR8LBPmR2E23+wTQe/MlE=
+github.com/foundriesio/go-ecies v0.3.0 h1:6Pb71NGo0HKi/5FeVuEHB01Y89OWvrgBBEQWfC9Vv5c=
+github.com/foundriesio/go-ecies v0.3.0/go.mod h1:ooRWGgUZKNzMkw6mGij8qROV7FUZEmpTZLGgo7UxM/8=
 github.com/foundriesio/go-toml v1.8.1-0.20200721033514-2232fec316b9 h1:sfzQdSyny3aeakKhe30/US58gNTQZhx2bBFvRvCRFQQ=
 github.com/foundriesio/go-toml v1.8.1-0.20200721033514-2232fec316b9/go.mod h1:D6yutnOGMveHEPV7VQOuvI/gXY61bv+9bAOTRnLElKs=
 github.com/godbus/dbus/v5 v5.0.4 h1:9349emZab16e7zQvpmsbtjc18ykshndd8y2PG3sgJbA=
@@ -31,8 +33,6 @@ github.com/stretchr/testify v1.7.2 h1:4jaiDzPyXQvSd7D0EjG45355tLlV3VOECpq10pLC+8
 github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1FQKckRals=
 github.com/thales-e-security/pool v0.0.2 h1:RAPs4q2EbWsTit6tpzuvTFlgFRJ3S8Evf5gtvVDbmPg=
 github.com/thales-e-security/pool v0.0.2/go.mod h1:qtpMm2+thHtqhLzTwgDBj/OuNnMpupY8mv0Phz0gjhU=
-github.com/umbracle/ecies v0.0.0-20190516151710-4bface869a50 h1:x4PE3nuIwRylLUGumEXvpSuEzQeiJUL1a3RGSPpmTlc=
-github.com/umbracle/ecies v0.0.0-20190516151710-4bface869a50/go.mod h1:Kr+nyw5nWGn6d7EH+yyfway8bj0jgS2ZGMLDkIgiGfI=
 github.com/urfave/cli/v2 v2.10.2 h1:x3p8awjp/2arX+Nl/G2040AZpOCHS/eMJJ1/a+mye4Y=
 github.com/urfave/cli/v2 v2.10.2/go.mod h1:f8iq5LtQ/bLxafbdBSLPPNsgaW0l/2fYYEHhAyPlwvo=
 github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 h1:bAn7/zixMGCfxrRTfdpNzjtPYqr8smhKouy9mxVdGPU=
