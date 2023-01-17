@@ -5,11 +5,11 @@ go 1.17
 require (
 	github.com/ThalesIgnite/crypto11 v1.2.5
 	github.com/coreos/go-systemd/v22 v22.5.0
+	github.com/foundriesio/go-ecies v0.3.0
 	github.com/google/uuid v1.2.0
 	github.com/miekg/pkcs11 v1.0.3-0.20190429190417-a667d056470f
 	github.com/pelletier/go-toml v1.8.0
 	github.com/stretchr/testify v1.7.2
-	github.com/umbracle/ecies v0.0.0-20190516151710-4bface869a50
 	github.com/urfave/cli/v2 v2.10.2
 	go.mozilla.org/pkcs7 v0.0.0-20210826202110-33d05740a352
 )
