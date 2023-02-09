@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	ecies "github.com/foundriesio/go-ecies"
+	"github.com/stretchr/testify/require"
 )
 
 const pub_pem = `
@@ -229,6 +230,34 @@ func TestSafeHandler(t *testing.T) {
 		if err == nil {
 			t.Fatal("OnChanged called with safe handlers enabled")
 		}
+	})
+}
+
+func TestHandlerExit(t *testing.T) {
+	tmpDir := t.TempDir()
+	failScript := filepath.Join(tmpDir, "fail.sh")
+	script := "#!/bin/sh -e\necho failing with 123\nexit 123"
+	os.WriteFile(failScript, []byte(script), 0o755)
+
+	called := false
+	exit := func(rc int) {
+		called = true
+	}
+
+	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
+		app.exitFunc = exit
+
+		buf, err := os.ReadFile(app.EncryptedConfig)
+		require.Nil(t, err)
+		var config map[string]*ConfigFile
+		err = json.Unmarshal(buf, &config)
+		require.Nil(t, err)
+		config["bar"].OnChanged = []string{failScript}
+		buf, err = json.Marshal(config)
+		require.Nil(t, err)
+		require.Nil(t, os.WriteFile(app.EncryptedConfig, buf, 0o777))
+		require.Nil(t, app.Extract())
+		require.True(t, called)
 	})
 }
 

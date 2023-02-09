@@ -40,6 +40,8 @@ type App struct {
 	configUrl      string
 	unsafeHandlers bool
 	sota           *toml.Tree
+
+	exitFunc func(int)
 }
 
 func tomlGet(tree *toml.Tree, key string) string {
@@ -190,6 +192,7 @@ func NewApp(sota_config, secrets_dir string, unsafeHandlers, testing bool) (*App
 		configUrl:       url,
 		sota:            sota,
 		unsafeHandlers:  unsafeHandlers,
+		exitFunc:        os.Exit,
 	}
 
 	return &app, nil
@@ -300,6 +303,11 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
 				log.Printf("Unable to run command: %v", err)
+				if exitError, ok := err.(*exec.ExitError); ok {
+					if exitError.ExitCode() == 123 {
+						a.exitFunc(123)
+					}
+				}
 			}
 		} else {
 			log.Printf("Skipping unsafe on-change command for %s: %v.", fname, onChanged)
