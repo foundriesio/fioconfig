@@ -236,7 +236,7 @@ func TestSafeHandler(t *testing.T) {
 func TestHandlerExit(t *testing.T) {
 	tmpDir := t.TempDir()
 	failScript := filepath.Join(tmpDir, "fail.sh")
-	script := "#!/bin/sh -e\necho failing with 123\nexit 123"
+	script := fmt.Sprintf("#!/bin/sh -e\necho failing with %d\nexit %d", onChangedForceExit, onChangedForceExit)
 	os.WriteFile(failScript, []byte(script), 0o755)
 
 	called := false

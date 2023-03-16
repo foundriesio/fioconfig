@@ -18,6 +18,8 @@ import (
 	toml "github.com/pelletier/go-toml"
 )
 
+const onChangedForceExit = 123
+
 var NotModifiedError = errors.New("Config unchanged on server")
 
 // Functions to be called when the daemon is initialized
@@ -304,8 +306,8 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			if err := cmd.Run(); err != nil {
 				log.Printf("Unable to run command: %v", err)
 				if exitError, ok := err.(*exec.ExitError); ok {
-					if exitError.ExitCode() == 123 {
-						a.exitFunc(123)
+					if exitError.ExitCode() == onChangedForceExit {
+						a.exitFunc(onChangedForceExit)
 					}
 				}
 			}

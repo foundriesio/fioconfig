@@ -39,7 +39,10 @@ rotate() {
 	if [ -n "$cert_ids" ]; then
 		extra_args="$extra_args --pkcs11-cert-ids=$cert_ids"
 	fi
-	exec $fioconfig -c $SOTA_DIR renew-cert $extra_args $est_server $rotation_id 
+	if ! $fioconfig -c $SOTA_DIR renew-cert $extra_args $est_server $rotation_id  ; then
+		exit 123
+	fi
+	exit 0
 }
 
 # We'll execute under two conditions:
