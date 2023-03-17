@@ -237,7 +237,7 @@ func TestHandlerExit(t *testing.T) {
 	tmpDir := t.TempDir()
 	failScript := filepath.Join(tmpDir, "fail.sh")
 	script := fmt.Sprintf("#!/bin/sh -e\necho failing with %d\nexit %d", onChangedForceExit, onChangedForceExit)
-	os.WriteFile(failScript, []byte(script), 0o755)
+	require.Nil(t, os.WriteFile(failScript, []byte(script), 0o755))
 
 	called := false
 	exit := func(rc int) {
