@@ -1,5 +1,7 @@
 #!/bin/sh -e
 
+SOTA_CLIENT=aktualizr-lite
+
 # This is an OnChanged handler that can handle aktualir-lite .toml files.
 # It copies the toml file to /etc/sota/conf.d/ and will restart aktualizr-lite
 
@@ -25,4 +27,4 @@ else
 	sed -e 's/^# MANAGED BY FIOCONFIG: //g' -i /var/sota/sota.toml
 fi
 
-systemctl restart aktualizr-lite
+systemctl restart ${SOTA_CLIENT}
