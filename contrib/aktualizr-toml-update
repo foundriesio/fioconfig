@@ -15,10 +15,14 @@ if [ -f $CONFIG_FILE ] ; then
 	# Note: there is no way to surrender that control other than remove config altogether.
 	if grep -q "^\s*tags\s*=" $CONFIG_FILE 2>/dev/null ; then
 		sed -e '/^\s*tags\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
+	else
+		sed -r 's/^# MANAGED BY FIOCONFIG:\s*(tags\s*=)/\1/g' -i sota.toml
 	fi
 
 	if grep -q "^\s*compose_apps\s*=" $CONFIG_FILE 2>/dev/null ; then
 		sed -e '/^\s*compose_apps\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i /var/sota/sota.toml
+	else
+		sed -r 's/^# MANAGED BY FIOCONFIG:\s*(compose_apps\s*=)/\1/g' -i sota.toml
 	fi
 else
 	rm -f /etc/sota/conf.d/$(basename $CONFIG_FILE)
