@@ -319,8 +319,15 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 
 func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	headers := make(map[string]string)
+	var config configSnapshot
+	var err error
 
-	if fi, err := os.Stat(a.EncryptedConfig); err == nil {
+	if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
+		var perr *os.PathError
+		if !errors.As(err, &perr) || !os.IsNotExist(perr) {
+			log.Printf("Unable to load previous config version: %s. Forcing config update", err)
+		}
+	} else if fi, err := os.Stat(a.EncryptedConfig); err == nil {
 		// Don't pull it down unless we need to
 		ts := fi.ModTime().UTC().Format(time.RFC1123)
 		headers["If-Modified-Since"] = ts
@@ -332,15 +339,8 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	}
 
 	if res.StatusCode == 200 {
-		var config configSnapshot
 		if config.next, err = UnmarshallBuffer(crypto, res.Body, true); err != nil {
 			return err
-		}
-		if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
-			var perr *os.PathError
-			if !errors.As(err, &perr) || !os.IsNotExist(perr) {
-				log.Printf("Unable to load previous config version: %s. Will overwrite", err)
-			}
 		}
 
 		if err = a.extract(crypto, config); err != nil {
