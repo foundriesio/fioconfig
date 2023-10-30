@@ -339,8 +339,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
 			var perr *os.PathError
 			if !errors.As(err, &perr) || !os.IsNotExist(perr) {
-				log.Printf("Unable to load previous config version: %s", err)
-				return err
+				log.Printf("Unable to load previous config version: %s. Will overwrite", err)
 			}
 		}
 

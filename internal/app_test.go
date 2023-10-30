@@ -280,6 +280,40 @@ func TestCheckBad(t *testing.T) {
 	})
 }
 
+// TestCheckCorruptedConfig ensures that fioconfig can recover from a corrupted
+// /var/sota/config.encrypted file
+func TestCheckCorruptedConfig(t *testing.T) {
+	var encbuf []byte
+	var err error
+
+	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wrtbuf := encbuf
+		if _, err := w.Write(wrtbuf); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	testWrapper(t, doGet, func(app *App, client *http.Client, tempdir string) {
+		_, crypto := createClient(app.sota)
+		encbuf, err = os.ReadFile(app.EncryptedConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Make the config file "corrupt" with invalid JSON
+		if err = os.WriteFile(app.EncryptedConfig, []byte("{this is bad json}"), 0o744); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := app.checkin(client, crypto); err != nil {
+			t.Fatal(err)
+		}
+
+		// Make sure encrypted file exists
+		assertFile(t, app.EncryptedConfig, nil)
+	})
+}
+
 func TestCheckGood(t *testing.T) {
 	var encbuf []byte
 	var err error
