@@ -49,7 +49,7 @@ rotate() {
 # 1) A cert rotation has never taken place (cert-rotation.state.completed does not exist)
 # 2) We need to do a new rotation ($rotation_id != cert-rotation.state.completed's RotationId)
 
-active_file="${SOTA_DIR}/cert-rotation.state"
+active_file="${STORAGE_DIR}/cert-rotation.state"
 completed_file="${active_file}.completed"
 
 if [ ! -f "$completed_file" ] ; then

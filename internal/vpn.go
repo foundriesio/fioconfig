@@ -48,14 +48,13 @@ func vpnBugFix(app *App, sotaConfig string) bool {
 }
 
 func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
-	sotaConfig := filepath.Dir(app.EncryptedConfig)
-	wgPriv := filepath.Join(sotaConfig, "wg-priv")
+	wgPriv := filepath.Join(app.StorageDir, "wg-priv")
 	register := false
 	if _, err := os.Stat(wgPriv); os.IsNotExist(err) {
 		register = true
 		log.Println("Wireguard private key does not exist, generating.")
 	} else {
-		register = vpnBugFix(app, sotaConfig)
+		register = vpnBugFix(app, app.StorageDir)
 	}
 	if register {
 		wgPrivTmp := wgPriv + ".tmp"
