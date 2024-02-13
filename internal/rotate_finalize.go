@@ -13,7 +13,7 @@ func (s finalizeStep) Name() string {
 }
 
 func (s finalizeStep) Execute(handler *CertRotationHandler) error {
-	storagePath := tomlGet(handler.app.sota, "storage.path")
+	storagePath := handler.app.StorageDir
 	keyvals := make(map[string]string)
 	if handler.usePkcs11() {
 		// Point at the new key ids

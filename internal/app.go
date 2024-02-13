@@ -47,17 +47,8 @@ type App struct {
 	exitFunc func(int)
 }
 
-func tomlGet(cfg *AppConfig, key string) string {
-	val := cfg.Get(key)
-	if len(val) == 0 {
-		fmt.Println("ERROR: Missing", key, "in sota.toml")
-		os.Exit(1)
-	}
-	return val
-}
-
 func tomlAssertVal(cfg *AppConfig, key string, allowed []string) string {
-	val := tomlGet(cfg, key)
+	val := cfg.GetOrDie(key)
 	for _, v := range allowed {
 		if val == v {
 			return val
@@ -82,11 +73,11 @@ func idToBytes(id string) []byte {
 }
 
 func createClientPkcs11(sota *AppConfig) (*http.Client, CryptoHandler) {
-	module := tomlGet(sota, "p11.module")
-	pin := tomlGet(sota, "p11.pass")
-	pkeyId := tomlGet(sota, "p11.tls_pkey_id")
-	certId := tomlGet(sota, "p11.tls_clientcert_id")
-	caFile := tomlGet(sota, "import.tls_cacert_path")
+	module := sota.GetOrDie("p11.module")
+	pin := sota.GetOrDie("p11.pass")
+	pkeyId := sota.GetOrDie("p11.tls_pkey_id")
+	certId := sota.GetOrDie("p11.tls_clientcert_id")
+	caFile := sota.GetOrDie("import.tls_cacert_path")
 
 	cfg := crypto11.Config{
 		Path:        module,
@@ -134,9 +125,9 @@ func createClientPkcs11(sota *AppConfig) (*http.Client, CryptoHandler) {
 }
 
 func createClientLocal(sota *AppConfig) (*http.Client, CryptoHandler) {
-	certFile := tomlGet(sota, "import.tls_clientcert_path")
-	keyFile := tomlGet(sota, "import.tls_pkey_path")
-	caFile := tomlGet(sota, "import.tls_cacert_path")
+	certFile := sota.GetOrDie("import.tls_clientcert_path")
+	keyFile := sota.GetOrDie("import.tls_pkey_path")
+	caFile := sota.GetOrDie("import.tls_cacert_path")
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -192,7 +183,7 @@ func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bo
 		url += "/config"
 	}
 
-	storagePath := tomlGet(sota, "storage.path")
+	storagePath := sota.GetOrDie("storage.path")
 
 	app := App{
 		StorageDir:      storagePath,

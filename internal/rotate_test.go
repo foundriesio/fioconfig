@@ -288,11 +288,11 @@ func TestRotateFinalize(t *testing.T) {
 		sota, err := NewAppConfig([]string{filepath.Join(tmpdir, "sota.toml")})
 		require.Nil(t, err)
 
-		bytes, err := os.ReadFile(tomlGet(sota, "import.tls_pkey_path"))
+		bytes, err := os.ReadFile(sota.GetOrDie("import.tls_pkey_path"))
 		require.Nil(t, err)
 		require.Equal(t, "newkey", string(bytes))
 
-		bytes, err = os.ReadFile(tomlGet(sota, "import.tls_clientcert_path"))
+		bytes, err = os.ReadFile(sota.GetOrDie("import.tls_clientcert_path"))
 		require.Nil(t, err)
 		require.Equal(t, "newcert", string(bytes))
 

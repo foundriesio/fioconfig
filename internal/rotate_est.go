@@ -130,7 +130,7 @@ func (s estStep) Execute(handler *CertRotationHandler) error {
 }
 
 func (s estStep) nextPkeyId(handler *CertRotationHandler) string {
-	cur := tomlGet(handler.app.sota, "p11.tls_pkey_id")
+	cur := handler.app.sota.GetOrDie("p11.tls_pkey_id")
 	for _, val := range handler.State.PkeySlotIds {
 		if val != cur {
 			return val
@@ -141,7 +141,7 @@ func (s estStep) nextPkeyId(handler *CertRotationHandler) string {
 }
 
 func (s estStep) nextCertId(handler *CertRotationHandler) string {
-	cur := tomlGet(handler.app.sota, "p11.tls_clientcert_id")
+	cur := handler.app.sota.GetOrDie("p11.tls_clientcert_id")
 	for _, val := range handler.State.CertSlotIds {
 		if val != cur {
 			return val
