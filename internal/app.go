@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/ThalesIgnite/crypto11"
-	toml "github.com/pelletier/go-toml"
 )
 
 const onChangedForceExit = 123
@@ -41,14 +40,15 @@ type App struct {
 	SecretsDir      string
 
 	configUrl      string
+	configPaths    []string
 	unsafeHandlers bool
-	sota           *toml.Tree
+	sota           *AppConfig
 
 	exitFunc func(int)
 }
 
-func tomlGet(tree *toml.Tree, key string) string {
-	val := tree.GetDefault(key, "").(string)
+func tomlGet(cfg *AppConfig, key string) string {
+	val := cfg.Get(key)
 	if len(val) == 0 {
 		fmt.Println("ERROR: Missing", key, "in sota.toml")
 		os.Exit(1)
@@ -56,8 +56,8 @@ func tomlGet(tree *toml.Tree, key string) string {
 	return val
 }
 
-func tomlAssertVal(tree *toml.Tree, key string, allowed []string) string {
-	val := tomlGet(tree, key)
+func tomlAssertVal(cfg *AppConfig, key string, allowed []string) string {
+	val := tomlGet(cfg, key)
 	for _, v := range allowed {
 		if val == v {
 			return val
@@ -81,7 +81,7 @@ func idToBytes(id string) []byte {
 	return bytes[start:]
 }
 
-func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
+func createClientPkcs11(sota *AppConfig) (*http.Client, CryptoHandler) {
 	module := tomlGet(sota, "p11.module")
 	pin := tomlGet(sota, "p11.pass")
 	pkeyId := tomlGet(sota, "p11.tls_pkey_id")
@@ -90,7 +90,7 @@ func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
 
 	cfg := crypto11.Config{
 		Path:        module,
-		TokenLabel:  sota.GetDefault("p11.label", "aktualizr").(string),
+		TokenLabel:  sota.GetDefault("p11.label", "aktualizr"),
 		Pin:         pin,
 		MaxSessions: 2,
 	}
@@ -133,7 +133,7 @@ func createClientPkcs11(sota *toml.Tree) (*http.Client, CryptoHandler) {
 	return client, NewEciesPkcs11Handler(ctx, privKey)
 }
 
-func createClientLocal(sota *toml.Tree) (*http.Client, CryptoHandler) {
+func createClientLocal(sota *AppConfig) (*http.Client, CryptoHandler) {
 	certFile := tomlGet(sota, "import.tls_clientcert_path")
 	keyFile := tomlGet(sota, "import.tls_pkey_path")
 	caFile := tomlGet(sota, "import.tls_cacert_path")
@@ -163,7 +163,7 @@ func createClientLocal(sota *toml.Tree) (*http.Client, CryptoHandler) {
 	panic("Unsupported private key")
 }
 
-func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
+func createClient(sota *AppConfig) (*http.Client, CryptoHandler) {
 	_ = tomlAssertVal(sota, "tls.ca_source", []string{"file"})
 	source := tomlAssertVal(sota, "tls.pkey_source", []string{"file", "pkcs11"})
 	_ = tomlAssertVal(sota, "tls.cert_source", []string{source})
@@ -173,8 +173,11 @@ func createClient(sota *toml.Tree) (*http.Client, CryptoHandler) {
 	return createClientPkcs11(sota)
 }
 
-func NewApp(sota_config, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {
-	sota, err := toml.LoadFile(filepath.Join(sota_config, "sota.toml"))
+func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {
+	if len(configPaths) == 0 {
+		configPaths = DEF_CONFIG_ORDER
+	}
+	sota, err := NewAppConfig(configPaths)
 	if err != nil {
 		fmt.Println("ERROR - unable to decode sota.toml:", err)
 		os.Exit(1)
@@ -185,7 +188,7 @@ func NewApp(sota_config, secrets_dir string, unsafeHandlers, testing bool) (*App
 
 	url := os.Getenv("CONFIG_URL")
 	if len(url) == 0 {
-		url = sota.GetDefault("tls.server", "https://ota-lite.foundries.io:8443").(string)
+		url = sota.GetDefault("tls.server", "https://ota-lite.foundries.io:8443")
 		url += "/config"
 	}
 
@@ -196,6 +199,7 @@ func NewApp(sota_config, secrets_dir string, unsafeHandlers, testing bool) (*App
 		EncryptedConfig: filepath.Join(storagePath, "config.encrypted"),
 		SecretsDir:      secrets_dir,
 		configUrl:       url,
+		configPaths:     configPaths,
 		sota:            sota,
 		unsafeHandlers:  unsafeHandlers,
 		exitFunc:        os.Exit,
@@ -304,7 +308,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
 			cmd.Env = append(cmd.Env, "STORAGE_DIR="+a.StorageDir)
-			cmd.Env = append(cmd.Env, "SOTA_DIR="+tomlGet(a.sota, "storage.path"))
+			cmd.Env = append(cmd.Env, "SOTA_DIR="+strings.Join(a.configPaths, ","))
 			cmd.Env = append(cmd.Env, "FIOCONFIG_BIN="+path)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr

@@ -147,7 +147,7 @@ func getCryptoHandler(h *CertRotationHandler) (*EciesCrypto, error) {
 
 	cfg := crypto11.Config{
 		Path:        module,
-		TokenLabel:  h.app.sota.GetDefault("p11.label", "aktualizr").(string),
+		TokenLabel:  h.app.sota.GetDefault("p11.label", "aktualizr"),
 		Pin:         pin,
 		MaxSessions: 2,
 	}
