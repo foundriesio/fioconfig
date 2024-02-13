@@ -80,6 +80,19 @@ func (c AppConfig) Get(key string) string {
 	return ""
 }
 
+func (c AppConfig) GetOrDie(key string) string {
+	val := c.Get(key)
+	if len(val) == 0 {
+		var paths []string
+		for _, cfg := range c.cfgs {
+			paths = append(paths, cfg.path)
+		}
+		fmt.Println("ERROR: Missing", key, "in", strings.Join(paths, ","))
+		os.Exit(1)
+	}
+	return val
+}
+
 func (c AppConfig) GetDefault(key string, defval string) string {
 	val := c.Get(key)
 	if len(val) == 0 {
