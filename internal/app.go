@@ -36,6 +36,7 @@ type configSnapshot struct {
 }
 
 type App struct {
+	StorageDir      string
 	EncryptedConfig string
 	SecretsDir      string
 
@@ -188,8 +189,11 @@ func NewApp(sota_config, secrets_dir string, unsafeHandlers, testing bool) (*App
 		url += "/config"
 	}
 
+	storagePath := tomlGet(sota, "storage.path")
+
 	app := App{
-		EncryptedConfig: filepath.Join(sota_config, "config.encrypted"),
+		StorageDir:      storagePath,
+		EncryptedConfig: filepath.Join(storagePath, "config.encrypted"),
 		SecretsDir:      secrets_dir,
 		configUrl:       url,
 		sota:            sota,
@@ -299,6 +303,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			log.Printf("Running on-change command for %s: %v", fname, onChanged)
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
+			cmd.Env = append(cmd.Env, "STORAGE_DIR="+a.StorageDir)
 			cmd.Env = append(cmd.Env, "SOTA_DIR="+tomlGet(a.sota, "storage.path"))
 			cmd.Env = append(cmd.Env, "FIOCONFIG_BIN="+path)
 			cmd.Stdout = os.Stdout
