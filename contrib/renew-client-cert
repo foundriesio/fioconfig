@@ -6,7 +6,6 @@
 [ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
 [ -f "$CONFIG_FILE" ] || (echo "$CONFIG_FILE does not exist"; exit 1)
 [ -z "$SOTA_DIR" ] && (echo "No SOTA_DIR specified"; exit 1)
-[ -d "$SOTA_DIR" ] || (echo "$SOTA_DIR does not exist"; exit 1)
 
 fioconfig="$FIOCONFIG_BIN"
 if [ -z "$fioconfig" ] ; then
