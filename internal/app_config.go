@@ -38,7 +38,7 @@ func NewAppConfig(configPaths []string) (*AppConfig, error) {
 			if st.IsDir() {
 				if entries, err := os.ReadDir(path); err == nil {
 					for _, entry := range entries {
-						if strings.HasSuffix(entry.Name(), ".toml") && entry.Type().IsRegular() {
+						if strings.HasSuffix(entry.Name(), ".toml") {
 							configsMap[entry.Name()] = filepath.Join(path, entry.Name())
 						}
 					}
