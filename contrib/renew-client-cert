@@ -6,7 +6,6 @@
 [ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
 [ -f "$CONFIG_FILE" ] || (echo "$CONFIG_FILE does not exist"; exit 1)
 [ -z "$SOTA_DIR" ] && (echo "No SOTA_DIR specified"; exit 1)
-[ -d "$SOTA_DIR" ] || (echo "$SOTA_DIR does not exist"; exit 1)
 
 fioconfig="$FIOCONFIG_BIN"
 if [ -z "$fioconfig" ] ; then
@@ -39,7 +38,7 @@ rotate() {
 	if [ -n "$cert_ids" ]; then
 		extra_args="$extra_args --pkcs11-cert-ids=$cert_ids"
 	fi
-	if ! $fioconfig -c $SOTA_DIR renew-cert $extra_args $est_server $rotation_id  ; then
+	if ! $fioconfig renew-cert $extra_args $est_server $rotation_id  ; then
 		exit 123
 	fi
 	exit 0
@@ -49,7 +48,7 @@ rotate() {
 # 1) A cert rotation has never taken place (cert-rotation.state.completed does not exist)
 # 2) We need to do a new rotation ($rotation_id != cert-rotation.state.completed's RotationId)
 
-active_file="${SOTA_DIR}/cert-rotation.state"
+active_file="${STORAGE_DIR}/cert-rotation.state"
 completed_file="${active_file}.completed"
 
 if [ ! -f "$completed_file" ] ; then

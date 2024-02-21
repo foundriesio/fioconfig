@@ -142,12 +142,12 @@ func getCryptoHandler(h *CertRotationHandler) (*EciesCrypto, error) {
 		return NewEciesLocalHandler(key).(*EciesCrypto), nil
 	}
 
-	module := tomlGet(h.app.sota, "p11.module")
-	pin := tomlGet(h.app.sota, "p11.pass")
+	module := h.app.sota.GetOrDie("p11.module")
+	pin := h.app.sota.GetOrDie("p11.pass")
 
 	cfg := crypto11.Config{
 		Path:        module,
-		TokenLabel:  h.app.sota.GetDefault("p11.label", "aktualizr").(string),
+		TokenLabel:  h.app.sota.GetDefault("p11.label", "aktualizr"),
 		Pin:         pin,
 		MaxSessions: 2,
 	}

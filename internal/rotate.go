@@ -53,9 +53,9 @@ type CertRotationStep interface {
 
 // NewCertRotationHandler constructs a new handler to initiate a rotation with
 func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotationHandler {
-	eventUrl := tomlGet(app.sota, "tls.server") + "/events"
+	eventUrl := app.sota.GetOrDie("tls.server") + "/events"
 
-	target, err := LoadCurrentTarget(filepath.Join(tomlGet(app.sota, "storage.path"), "current-target"))
+	target, err := LoadCurrentTarget(filepath.Join(app.StorageDir, "current-target"))
 	if err != nil {
 		log.Printf("Unable to parse current-target. Events posted to server will be missing content: %s", err)
 	}

@@ -139,7 +139,7 @@ path = "%s"
 	if config["bar"].Value != "bar file value" {
 		t.Fatal("Encryption of bar should not have occurred")
 	}
-	app, err := NewApp(dir, dir, true, true)
+	app, err := NewApp([]string{dir}, dir, true, true)
 	app.configUrl = ts.URL
 	if err != nil {
 		t.Fatal(err)
