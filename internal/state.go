@@ -167,9 +167,17 @@ func (h *stateHandler[T]) RestartServices() {
 	if err != nil {
 		log.Fatalf("Unable to connect to DBUS for service restarts: %s", err)
 	}
-
-	for _, svc := range []string{"aktualizr-lite.service", "fioconfig.service"} {
+	services := []string{"aktualizr-lite.service", "fioconfig.service"}
+	units, err := con.ListUnitsByNamesContext(ctx, []string{services[0]})
+	if err != nil {
+		log.Fatalf("Unable to query status of units: %s", err)
+	}
+	akliteSvc := units[0]
+	for _, svc := range services {
 		restartChan := make(chan string)
+		if svc == akliteSvc.Name && (akliteSvc.ActiveState == "inactive" || akliteSvc.SubState == "dead") {
+			continue
+		}
 		_, err = con.RestartUnitContext(ctx, svc, "replace", restartChan)
 		if err != nil {
 			log.Fatalf("Unable to restart: %s, %s", svc, err)
@@ -182,4 +190,5 @@ func (h *stateHandler[T]) RestartServices() {
 			log.Fatalf("Error restarting %s: %s", svc, result)
 		}
 	}
+}
 }
