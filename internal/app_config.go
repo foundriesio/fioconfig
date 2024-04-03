@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,8 @@ var DEF_CONFIG_ORDER = []string{
 	"/var/sota/sota.toml",
 	"/etc/sota/conf.d/",
 }
+
+var ErrNoWritableFound = errors.New("no writable TOML file found")
 
 type cfgFile struct {
 	name string
@@ -101,40 +104,45 @@ func (c AppConfig) GetDefault(key string, defval string) string {
 	return val
 }
 
-func (c AppConfig) updateKeys(keyVals map[string]string) error {
-	// It's unlikely but you could theoretically have keyvals in more than
-	// one config file. This makes its hard to do atomically. So, we should
-	// find the most significant config file and put all the keyvals into
-	// that one.
-	// We also have to assert the file we are writing isn't the z-50-fioctl.toml
-	// file. This file is "managed" so doing a config write to a keyval in that
-	// file would never work - it would get overwritten.
-	mostSignificatIdx := 0
-	found := false
+// findWritableFile looks at the keyVals and determines which toml file
+// we should update.
+//
+// It's unlikely but you could theoretically have keyvals in more than
+// one config file. This makes its hard to do atomically. So, we should
+// find the most significant config file and put all the keyvals into
+// that one.
+//
+// Returns nil if no writable file is found
+func (c AppConfig) findWritableFile(keyVals map[string]string) (*cfgFile, error) {
 	for i := range c.cfgs {
 		for k := range keyVals {
 			if c.cfgs[i].tree.Has(k) {
-				found = true
-				mostSignificatIdx = i
-				break
+				// We also have to assert the file we are writing isn't the z-50-fioctl.toml
+				// file. This file is "managed" so doing a config write to a keyval in that
+				// file would never work - it would get overwritten.
+				if c.cfgs[i].name == "z-50-fioctl.toml" {
+					return nil, fmt.Errorf("unable to override config-managed file: %s", c.cfgs[i].path)
+				}
+				return c.cfgs[i], nil
 			}
 		}
-		if found {
-			break
-		}
 	}
+	return nil, ErrNoWritableFound
+}
 
-	if c.cfgs[mostSignificatIdx].name == "z-50-fioctl.toml" {
-		return fmt.Errorf("unable to override a config-managed file: %s", c.cfgs[mostSignificatIdx].path)
-	}
-
-	for k, v := range keyVals {
-		c.cfgs[mostSignificatIdx].tree.Set(k, v)
-	}
-	bytes, err := c.cfgs[mostSignificatIdx].tree.Marshal()
+func (c AppConfig) updateKeys(keyVals map[string]string) error {
+	cfgFile, err := c.findWritableFile(keyVals)
 	if err != nil {
 		return err
 	}
 
-	return safeWrite(c.cfgs[mostSignificatIdx].path, bytes)
+	for k, v := range keyVals {
+		cfgFile.tree.Set(k, v)
+	}
+	bytes, err := cfgFile.tree.Marshal()
+	if err != nil {
+		return err
+	}
+
+	return safeWrite(cfgFile.path, bytes)
 }

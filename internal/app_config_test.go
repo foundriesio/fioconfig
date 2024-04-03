@@ -61,8 +61,17 @@ key = "val"`
 	require.Equal(t, "mainbar", cfg2.cfgs[1].tree.Get("main.bar").(string))
 	require.Equal(t, "mainbar", cfg2.Get("main.bar"))
 
+	// We must reject a change to z-50-fioctl.toml
 	keyvals = map[string]string{
 		"updates.key": "this must fail",
 	}
 	require.NotNil(t, cfg.updateKeys(keyvals))
+
+	// We must reject a keyval that does not exist - this api is for *updates* only
+	keyvals = map[string]string{
+		"updates.not_exist": "this must fail",
+	}
+	err = cfg.updateKeys(keyvals)
+	require.NotNil(t, err)
+	require.Equal(t, ErrNoWritableFound, err)
 }
