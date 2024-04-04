@@ -117,6 +117,12 @@ func isWritable(path string) bool {
 	return err == nil
 }
 
+// isConfigManaged returns whether or not a file is managed by fioctl/fioconfig
+// and thus should not be written to by this.
+func isConfigManaged(path string) bool {
+	return path == "z-50-fioctl.toml"
+}
+
 // findWritableFile looks at the keyVals and determines which toml file
 // we should update.
 //
@@ -130,14 +136,18 @@ func (c AppConfig) findWritableFile(keyVals map[string]string) (*cfgFile, error)
 	for i := range c.cfgs {
 		for k := range keyVals {
 			if c.cfgs[i].tree.Has(k) {
-				// We also have to assert the file we are writing isn't the z-50-fioctl.toml
-				// file. This file is "managed" so doing a config write to a keyval in that
-				// file would never work - it would get overwritten.
-				if c.cfgs[i].name == "z-50-fioctl.toml" {
+				if isConfigManaged(c.cfgs[i].name) {
 					return nil, fmt.Errorf("unable to override config-managed file: %s", c.cfgs[i].path)
 				}
 
 				if !isWritable(c.cfgs[i].path) {
+					// Work our way back up more significant files to see if there
+					// is one we can update this value from
+					for j := i - 1; j >= 0; j-- {
+						if !isConfigManaged(c.cfgs[j].name) && isWritable(c.cfgs[j].path) {
+							return c.cfgs[j], nil
+						}
+					}
 					return nil, fmt.Errorf("unable to write to file: %s", c.cfgs[i].path)
 				}
 				return c.cfgs[i], nil

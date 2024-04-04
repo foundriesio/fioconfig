@@ -89,6 +89,21 @@ key = "val"`
 	err = cfg2.updateKeys(keyvals)
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), "unable to write to file:")
+
+	// Show we can find a file that we can fail back to config file that we
+	// can write to. We first have to rename - the usrlib file so that
+	// "sota.toml" will override it
+	require.Nil(t, os.Chmod(usrLib, 0o700))
+	require.Nil(t, os.Rename(filepath.Join(usrLib, "z-1.toml"), filepath.Join(usrLib, "r-1.toml")))
+	require.Nil(t, os.Chmod(usrLib, 0o500))
+	cfg2, err = NewAppConfig([]string{varSota, usrLib})
+	require.Nil(t, err)
+	keyvals["main.usrlib"] = "this should work"
+	err = cfg2.updateKeys(keyvals)
+	require.Nil(t, err)
+	cfg2, err = NewAppConfig([]string{varSota, usrLib})
+	require.Nil(t, err)
+	require.Equal(t, "this should work", cfg2.Get("main.usrlib"))
 }
 
 func TestIsWritable(t *testing.T) {
