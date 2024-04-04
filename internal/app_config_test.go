@@ -16,6 +16,7 @@ foo = "bar"`
 	etc := t.TempDir()
 
 	usrLibOver := `[main]
+usrlib = "readonlyTest"
 bar = "usr"`
 
 	etcOver := `[main]
@@ -74,4 +75,25 @@ key = "val"`
 	err = cfg.updateKeys(keyvals)
 	require.NotNil(t, err)
 	require.Equal(t, ErrNoWritableFound, err)
+
+	// Fail if the file can't be written to
+	cfg2, err = NewAppConfig([]string{usrLib})
+	require.Nil(t, err)
+	keyvals = map[string]string{
+		"main.usrlib": "this is a read-only directory",
+	}
+	require.Nil(t, os.Chmod(usrLib, 0o500))
+	defer func() {
+		_ = os.Chmod(usrLib, 0o777)
+	}()
+	err = cfg2.updateKeys(keyvals)
+	require.NotNil(t, err)
+	require.Contains(t, err.Error(), "unable to write to file:")
+}
+
+func TestIsWritable(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.True(t, isWritable(filepath.Join(tmpDir, "foo.toml")))
+	require.Nil(t, os.Chmod(tmpDir, 0o400))
+	require.False(t, isWritable(filepath.Join(tmpDir, "foo.toml")))
 }

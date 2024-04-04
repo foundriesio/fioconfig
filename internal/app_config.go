@@ -104,6 +104,19 @@ func (c AppConfig) GetDefault(key string, defval string) string {
 	return val
 }
 
+func isWritable(path string) bool {
+	dirName := filepath.Dir(path)
+	baseName := filepath.Base(path)
+
+	tmpPath := filepath.Join(dirName, "."+baseName+".tmp")
+	fd, err := os.Create(tmpPath)
+	if fd != nil {
+		_ = fd.Close()
+		_ = os.Remove(tmpPath)
+	}
+	return err == nil
+}
+
 // findWritableFile looks at the keyVals and determines which toml file
 // we should update.
 //
@@ -122,6 +135,10 @@ func (c AppConfig) findWritableFile(keyVals map[string]string) (*cfgFile, error)
 				// file would never work - it would get overwritten.
 				if c.cfgs[i].name == "z-50-fioctl.toml" {
 					return nil, fmt.Errorf("unable to override config-managed file: %s", c.cfgs[i].path)
+				}
+
+				if !isWritable(c.cfgs[i].path) {
+					return nil, fmt.Errorf("unable to write to file: %s", c.cfgs[i].path)
 				}
 				return c.cfgs[i], nil
 			}
