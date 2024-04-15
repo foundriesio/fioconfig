@@ -232,7 +232,7 @@ func safeWrite(name string, data []byte) error {
 	return os.Rename(tmpfile, name)
 }
 
-func (a *App) extract(crypto CryptoHandler, config configSnapshot) error {
+func (a *App) extract(config configSnapshot) error {
 	st, err := os.Stat(a.SecretsDir)
 	if err != nil {
 		return err
@@ -285,7 +285,7 @@ func (a *App) Extract() error {
 	if err != nil {
 		return err
 	}
-	return a.extract(crypto, configSnapshot{nil, config})
+	return a.extract(configSnapshot{nil, config})
 }
 
 func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
@@ -343,7 +343,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 			return err
 		}
 
-		if err = a.extract(crypto, config); err != nil {
+		if err = a.extract(config); err != nil {
 			return err
 		}
 		if err = safeWrite(a.EncryptedConfig, res.Body); err != nil {
