@@ -23,10 +23,12 @@ FORCE:
 format:
 	@gofmt -l  -w ./
 
-check: test
+lint:
 	@test -z $(shell gofmt -d -l ./ | tee /dev/stderr) || (echo "[WARN] Fix formatting issues with 'make fmt'"; exit 1)
 	@test -x $(linter) || (echo "Please install linter from https://github.com/golangci/golangci-lint/releases/tag/v1.25.1 to $(HOME)/go/bin")
 	$(linter) run --build-tags vpn
+
+check: test lint
 
 test:
 	go test ./... -v

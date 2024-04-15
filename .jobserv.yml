@@ -7,9 +7,21 @@ triggers:
         container: golangci/golangci-lint:v1.57
         host-tag: amd64
         script: unit-test
+        # unit test needs to run as non-root so that we can test
+        # read-only config logic
+        container-user: nobody
+
+      - name: lint
+        container: golangci/golangci-lint:v1.57
+        host-tag: amd64
+        script: lint
 
 scripts:
 
   unit-test: |
     #!/bin/sh -ex
-    make check
+    HOME=/tmp make test
+
+  lint: |
+    #!/bin/sh -ex
+    make lint
