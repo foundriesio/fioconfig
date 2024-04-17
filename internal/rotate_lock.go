@@ -31,7 +31,7 @@ func (s lockStep) Execute(handler *CertRotationHandler) error {
 
 	pubBytes = pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes})
 
-	url := tomlGet(handler.app.sota, "tls.server") + "/device"
+	url := handler.app.sota.GetOrDie("tls.server") + "/device"
 	if res, err := httpPatch(handler.client, url, DeviceUpdate{string(pubBytes)}); err != nil {
 		return err
 	} else if res.StatusCode != 200 {

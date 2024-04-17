@@ -13,11 +13,12 @@ func (s finalizeStep) Name() string {
 }
 
 func (s finalizeStep) Execute(handler *CertRotationHandler) error {
-	storagePath := tomlGet(handler.app.sota, "storage.path")
+	storagePath := handler.app.StorageDir
+	keyvals := make(map[string]string)
 	if handler.usePkcs11() {
 		// Point at the new key ids
-		handler.app.sota.Set("p11.tls_pkey_id", handler.State.NewKey)
-		handler.app.sota.Set("p11.tls_clientcert_id", handler.State.NewCert)
+		keyvals["p11.tls_pkey_id"] = handler.State.NewKey
+		keyvals["p11.tls_clientcert_id"] = handler.State.NewCert
 	} else {
 		// Write out two new files and update sota.toml
 		// They need to be *new* unique names, so just use tempfile since it
@@ -38,19 +39,14 @@ func (s finalizeStep) Execute(handler *CertRotationHandler) error {
 			if err = f.Sync(); err != nil {
 				return err
 			}
-			handler.app.sota.Set(pair[1], f.Name())
+			keyvals[pair[1]] = f.Name()
 		}
 	}
-	bytes, err := handler.app.sota.Marshal()
-	if err != nil {
-		return fmt.Errorf("Unable to marshall new sota.toml")
-	}
-	path := filepath.Join(storagePath, "sota.toml")
-	if err = safeWrite(path, bytes); err != nil {
-		return fmt.Errorf("Unable to update sota.toml with new cert locations: %w", err)
+	if err := handler.app.sota.updateKeys(keyvals); err != nil {
+		return err
 	}
 
-	path = filepath.Join(storagePath, "config.encrypted")
+	path := filepath.Join(storagePath, "config.encrypted")
 	if err := safeWrite(path, []byte(handler.State.FullConfigEncrypted)); err != nil {
 		return fmt.Errorf("Error updating config.encrypted: %w", err)
 	}

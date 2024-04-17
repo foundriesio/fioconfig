@@ -14,14 +14,14 @@ import (
 )
 
 func NewApp(c *cli.Context) (*internal.App, error) {
-	app, err := internal.NewApp(c.String("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
+	app, err := internal.NewApp(c.StringSlice("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
 	if err != nil {
 		return nil, err
 	}
 	if c.Command.Name == "renew-cert" {
 		return app, nil
 	}
-	stateFile := filepath.Join(c.String("config"), "cert-rotation.state")
+	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
 	handler := internal.RestoreCertRotationHandler(app, stateFile)
 	if handler != nil {
 		online := c.Command.Name != "extract"
@@ -90,7 +90,7 @@ func renewCert(c *cli.Context) error {
 		cli.ShowCommandHelpAndExit(c, "renew-cert", 1)
 	}
 	server := c.Args().Get(0)
-	stateFile := filepath.Join(c.String("config"), "cert-rotation.state")
+	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
 	handler := internal.NewCertRotationHandler(app, stateFile, server)
 	idsStr := c.String("pkcs11-key-ids")
 	handler.State.PkeySlotIds = strings.Split(idsStr, ",")
@@ -113,11 +113,11 @@ func main() {
 		Name:  "fioconfig",
 		Usage: "A daemon to handle configuration management for devices in a Foundries Factory",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
+			&cli.StringSliceFlag{
 				Name:    "config",
 				Aliases: []string{"c"},
-				Value:   "/var/sota",
-				Usage:   "Aktualizr config directory",
+				Value:   cli.NewStringSlice(internal.DEF_CONFIG_ORDER...),
+				Usage:   "Aktualizr config paths",
 				EnvVars: []string{"SOTA_DIR"},
 			},
 			&cli.StringFlag{
