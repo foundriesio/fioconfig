@@ -5,9 +5,8 @@ import (
 )
 
 type CertRotationState struct {
+	BaseState
 	EstServer   string
-	RotationId  string // A unique ID to identify this rotation operation with
-	StepIdx     int
 	PkeySlotIds []string // Available IDs we can use when generating a new key
 	CertSlotIds []string // Available IDs we can use when saving the new cert
 
@@ -25,28 +24,57 @@ type CertRotationState struct {
 	Finalized bool
 }
 
-// NewCertRotationHandler constructs a new handler to initiate a rotation with
+type CertRotationHandler struct {
+	stateHandler
+	State CertRotationState
+}
+
+type certRotationStep interface {
+	Name() string
+	Execute(handler *CertRotationHandler) error
+}
+
 func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotationHandler {
-	state := CertRotationState{EstServer: estServer}
-	steps := []CertRotationStep{
-		&estStep{},
-		&lockStep{},
-		&fullCfgStep{},
-		&deviceCfgStep{},
-		&finalizeStep{},
+	handler := &CertRotationHandler{
+		State:        CertRotationState{EstServer: estServer},
+		stateHandler: newStateHandler(app, stateFile),
 	}
-	return newCertRotationHandler(app, stateFile, state, steps)
+
+	adapter := func(step certRotationStep) stateStep {
+		return stateStep{
+			Name: step.Name(),
+			Execute: func(h *stateHandler) error {
+				// Golang does not allow to convert stateHandler to CertRotationHandler
+				// So, use closure to hold the reference to it.
+				return step.Execute(handler)
+			},
+		}
+	}
+
+	handler.state = &handler.State
+	handler.steps = []stateStep{
+		adapter(estStep{}),
+		adapter(lockStep{}),
+		adapter(fullCfgStep{}),
+		adapter(deviceCfgStep{}),
+		adapter(finalizeStep{}),
+	}
+	return handler
 }
 
 // RestoreCertRotationHandler will attempt to load a previous rotation attempt's
 // state and return a handler that can process it. This function returns nil when
 // `stateFile` does not exist
 func RestoreCertRotationHandler(app *App, stateFile string) *CertRotationHandler {
-	return restoreCertRotationHandler(app, stateFile)
+	handler := NewCertRotationHandler(app, stateFile, "")
+	if ok := handler.Restore(); !ok {
+		handler = nil
+	}
+	return handler
 }
 
 func (h *CertRotationHandler) Rotate() error {
-	return h.execute()
+	return h.execute("CertRotationStarted", "CertRotationCompleted", true)
 }
 
 // ResumeRotation checks if we have an incomplete cert rotation. If so, it

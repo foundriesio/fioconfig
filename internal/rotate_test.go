@@ -21,17 +21,13 @@ import (
 	"go.mozilla.org/pkcs7"
 )
 
-type testStep struct {
-	name      string
-	execError error
-}
-
-func (t testStep) Name() string {
-	return t.name
-}
-
-func (t testStep) Execute(handler *CertRotationHandler) error {
-	return t.execError
+func testStep(name string, err error) stateStep {
+	return stateStep{
+		Name: name,
+		Execute: func(_ *stateHandler) error {
+			return err
+		},
+	}
 }
 
 type testClient struct {
@@ -79,8 +75,8 @@ func TestRotationHandler(t *testing.T) {
 		handler.eventSync = NoOpEventSync{}
 		handler.cienv = true
 
-		handler.steps = []CertRotationStep{
-			&testStep{"step1", nil},
+		handler.steps = []stateStep{
+			testStep("step1", nil),
 		}
 
 		require.Nil(t, handler.Rotate())
@@ -91,8 +87,8 @@ func TestRotationHandler(t *testing.T) {
 		// Do one that fails, it should leave a statefile so we know where
 		// we got to
 		handler.State.StepIdx = 0
-		handler.steps = []CertRotationStep{
-			&testStep{"step1", errors.New("1")},
+		handler.steps = []stateStep{
+			testStep("step1", errors.New("1")),
 		}
 		require.NotNil(t, handler.Rotate())
 		handler = RestoreCertRotationHandler(app, stateFile)
@@ -101,9 +97,9 @@ func TestRotationHandler(t *testing.T) {
 		require.Equal(t, "est-server-doesn't-matter", handler.State.EstServer)
 
 		// Check that we can resume from a non-zero StepIdx
-		handler.steps = []CertRotationStep{
-			&testStep{"step1", errors.New("Step 0 shouldn't have been run")},
-			&testStep{"step2", nil},
+		handler.steps = []stateStep{
+			testStep("step1", errors.New("Step 0 shouldn't have been run")),
+			testStep("step2", nil),
 		}
 		handler.State.StepIdx = 1
 		require.Nil(t, handler.Rotate())

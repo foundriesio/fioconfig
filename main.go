@@ -98,7 +98,7 @@ func renewCert(c *cli.Context) error {
 	handler.State.CertSlotIds = strings.Split(idsStr, ",")
 
 	if c.NArg() == 2 {
-		handler.State.RotationId = c.Args().Get(1)
+		handler.State.CorrelationId = c.Args().Get(1)
 	}
 
 	log.Printf("Performing certificate renewal")
