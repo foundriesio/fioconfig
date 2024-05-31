@@ -36,7 +36,7 @@ func (s estStep) Name() string {
 	return "Generate new certificate"
 }
 
-func (s estStep) Execute(handler *CertRotationHandler) error {
+func (s estStep) Execute(handler *certRotationContext) error {
 	// Find the current certificate so we can build the proper EST request
 	tlsCert := handler.client.Transport.(*http.Transport).TLSClientConfig.Certificates[0]
 	cert, err := x509.ParseCertificate(tlsCert.Certificate[0])
@@ -129,7 +129,7 @@ func (s estStep) Execute(handler *CertRotationHandler) error {
 	return nil
 }
 
-func (s estStep) nextPkeyId(handler *CertRotationHandler) string {
+func (s estStep) nextPkeyId(handler *certRotationContext) string {
 	cur := handler.app.sota.GetOrDie("p11.tls_pkey_id")
 	for _, val := range handler.State.PkeySlotIds {
 		if val != cur {
@@ -140,7 +140,7 @@ func (s estStep) nextPkeyId(handler *CertRotationHandler) string {
 	return "07"
 }
 
-func (s estStep) nextCertId(handler *CertRotationHandler) string {
+func (s estStep) nextCertId(handler *certRotationContext) string {
 	cur := handler.app.sota.GetOrDie("p11.tls_clientcert_id")
 	for _, val := range handler.State.CertSlotIds {
 		if val != cur {

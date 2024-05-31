@@ -16,7 +16,7 @@ func (s lockStep) Name() string {
 	return "Lock device configuration on server"
 }
 
-func (s lockStep) Execute(handler *CertRotationHandler) error {
+func (s lockStep) Execute(handler *certRotationContext) error {
 	crypto, err := getCryptoHandler(handler)
 	if err != nil {
 		return err

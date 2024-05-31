@@ -30,7 +30,7 @@ func (t testStep) Name() string {
 	return t.name
 }
 
-func (t testStep) Execute(handler *CertRotationHandler) error {
+func (t testStep) Execute(_ *certRotationContext) error {
 	return t.execError
 }
 
@@ -79,8 +79,8 @@ func TestRotationHandler(t *testing.T) {
 		handler.eventSync = NoOpEventSync{}
 		handler.cienv = true
 
-		handler.steps = []CertRotationStep{
-			&testStep{"step1", nil},
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
 		}
 
 		require.Nil(t, handler.Rotate())
@@ -91,8 +91,8 @@ func TestRotationHandler(t *testing.T) {
 		// Do one that fails, it should leave a statefile so we know where
 		// we got to
 		handler.State.StepIdx = 0
-		handler.steps = []CertRotationStep{
-			&testStep{"step1", errors.New("1")},
+		handler.steps = []certRotationStep{
+			testStep{"step1", errors.New("1")},
 		}
 		require.NotNil(t, handler.Rotate())
 		handler = RestoreCertRotationHandler(app, stateFile)
@@ -101,9 +101,9 @@ func TestRotationHandler(t *testing.T) {
 		require.Equal(t, "est-server-doesn't-matter", handler.State.EstServer)
 
 		// Check that we can resume from a non-zero StepIdx
-		handler.steps = []CertRotationStep{
-			&testStep{"step1", errors.New("Step 0 shouldn't have been run")},
-			&testStep{"step2", nil},
+		handler.steps = []certRotationStep{
+			testStep{"step1", errors.New("Step 0 shouldn't have been run")},
+			testStep{"step2", nil},
 		}
 		handler.State.StepIdx = 1
 		require.Nil(t, handler.Rotate())
@@ -119,7 +119,7 @@ func TestEst(t *testing.T) {
 
 			step := estStep{}
 
-			require.Nil(t, step.Execute(handler))
+			require.Nil(t, step.Execute(&handler.stateContext))
 			require.True(t, len(handler.State.NewCert) > 0)
 			require.True(t, len(handler.State.NewKey) > 0)
 		})
@@ -140,7 +140,7 @@ func TestRotateFullConfig(t *testing.T) {
 
 		step := fullCfgStep{}
 
-		require.Nil(t, step.Execute(handler))
+		require.Nil(t, step.Execute(&handler.stateContext))
 		require.True(t, len(handler.State.FullConfigEncrypted) > 0)
 
 		var config map[string]*ConfigFile
@@ -190,7 +190,7 @@ func TestRotateLock(t *testing.T) {
 
 		step := lockStep{}
 
-		require.Nil(t, step.Execute(handler))
+		require.Nil(t, step.Execute(&handler.stateContext))
 		require.True(t, called)
 	})
 }
@@ -245,7 +245,7 @@ func TestRotateDeviceConfig(t *testing.T) {
 
 		step := deviceCfgStep{}
 
-		require.Nil(t, step.Execute(handler))
+		require.Nil(t, step.Execute(&handler.stateContext))
 		require.True(t, handler.State.DeviceConfigUpdated)
 
 		var config map[string]*ConfigFile
@@ -265,7 +265,7 @@ func TestRotateDeviceConfig(t *testing.T) {
 		encbuf = newcfg
 		newcfg = nil
 		handler.State.DeviceConfigUpdated = false
-		require.Nil(t, step.Execute(handler))
+		require.Nil(t, step.Execute(&handler.stateContext))
 		require.Nil(t, newcfg) // We shouldn't have called PATCH /config-device
 	})
 }
@@ -283,7 +283,7 @@ func TestRotateFinalize(t *testing.T) {
 		handler.State.NewCert = "newcert"
 
 		step := finalizeStep{}
-		require.Nil(t, step.Execute(handler))
+		require.Nil(t, step.Execute(&handler.stateContext))
 
 		sota, err := NewAppConfig([]string{filepath.Join(tmpdir, "sota.toml")})
 		require.Nil(t, err)

@@ -12,7 +12,7 @@ func (s finalizeStep) Name() string {
 	return "Finalize aktualizr configuration"
 }
 
-func (s finalizeStep) Execute(handler *CertRotationHandler) error {
+func (s finalizeStep) Execute(handler *certRotationContext) error {
 	storagePath := handler.app.StorageDir
 	keyvals := make(map[string]string)
 	if handler.usePkcs11() {

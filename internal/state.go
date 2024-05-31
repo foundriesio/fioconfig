@@ -14,25 +14,57 @@ import (
 	"github.com/coreos/go-systemd/v22/dbus"
 )
 
-type CertRotationHandler struct {
-	State     CertRotationState
+type BaseState struct {
+	// A unique ID to identify this operation - RotationId inside a file for backward compatibility
+	CorrelationId string `json:"RotationId"`
+	StepIdx       int
+}
+
+type state interface {
+	GetCorrelationId() string
+	GetCurrentStep() int
+	MoveToNextStep() int
+}
+
+func (s *BaseState) GetCorrelationId() string {
+	if len(s.CorrelationId) == 0 {
+		s.CorrelationId = fmt.Sprintf("certs-%d", time.Now().Unix())
+		log.Printf("Setting default correlation id to: %s", s.CorrelationId)
+	}
+	return s.CorrelationId
+}
+
+func (s *BaseState) GetCurrentStep() int {
+	return s.StepIdx
+}
+
+func (s *BaseState) MoveToNextStep() int {
+	s.StepIdx += 1
+	return s.StepIdx
+}
+
+type stateContext[T state] struct {
+	State     T
 	stateFile string
 	app       *App
 	client    *http.Client
 	crypto    *EciesCrypto
 	eventSync EventSync
-	steps     []CertRotationStep
 	cienv     bool
 }
 
-type CertRotationStep interface {
+type stateStep[T state] interface {
 	Name() string
-	Execute(handler *CertRotationHandler) error
+	Execute(*stateContext[T]) error
 }
 
-func newCertRotationHandler(
-	app *App, stateFile string, state CertRotationState, steps []CertRotationStep,
-) *CertRotationHandler {
+// stateContext type is needed to allow extending stateHandler subclasses with new facade methods
+type stateHandler[T state] struct {
+	stateContext[T]
+	steps []stateStep[T]
+}
+
+func newStateContext[T state](app *App, stateFile string, state T) stateContext[T] {
 	eventUrl := app.sota.GetOrDie("tls.server") + "/events"
 
 	target, err := LoadCurrentTarget(filepath.Join(app.StorageDir, "current-target"))
@@ -41,13 +73,12 @@ func newCertRotationHandler(
 	}
 
 	client, crypto := createClient(app.sota)
-	return &CertRotationHandler{
+	return stateContext[T]{
 		State:     state,
 		stateFile: stateFile,
 		app:       app,
 		client:    client,
 		crypto:    crypto.(*EciesCrypto),
-		steps:     steps,
 		eventSync: &DgEventSync{
 			client: client,
 			url:    eventUrl,
@@ -57,11 +88,11 @@ func newCertRotationHandler(
 }
 
 // usePkcs11 detects if the handler should work with local files or PKCS11
-func (h *CertRotationHandler) usePkcs11() bool {
+func (h stateContext[T]) usePkcs11() bool {
 	return h.crypto.ctx != nil
 }
 
-func (h *CertRotationHandler) Save() error {
+func (h *stateContext[T]) Save() error {
 	bytes, err := json.Marshal(h.State)
 	if err != nil {
 		return err
@@ -69,30 +100,24 @@ func (h *CertRotationHandler) Save() error {
 	return safeWrite(h.stateFile, bytes)
 }
 
-func restoreCertRotationHandler(app *App, stateFile string) *CertRotationHandler {
-	bytes, err := os.ReadFile(stateFile)
+func (h *stateContext[T]) Restore() (loaded bool) {
+	bytes, err := os.ReadFile(h.stateFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil
+			return false
 		} else {
 			// Looks like we started a rotation, we should try and finish it
-			log.Printf("Error reading %s, return empty rotation state: %s", stateFile, err)
+			log.Printf("Error reading %s, return empty state: %s", h.stateFile, err)
 		}
 	}
-	handler := NewCertRotationHandler(app, stateFile, "")
-	if err = json.Unmarshal(bytes, &handler.State); err != nil {
-		log.Printf("Error unmarshalling rotation state, return empty rotation state %s", err)
-		return handler
+	if err = json.Unmarshal(bytes, &h.State); err != nil {
+		log.Printf("Error unmarshalling %s, return empty state %s", h.stateFile, err)
 	}
-	return handler
+	return true
 }
 
-func (h *CertRotationHandler) execute(startEvent, completeEvent string, restart bool) error {
-	if len(h.State.RotationId) == 0 {
-		h.State.RotationId = fmt.Sprintf("certs-%d", time.Now().Unix())
-		log.Printf("Setting default rotation id to: %s", h.State.RotationId)
-	}
-	h.eventSync.SetCorrelationId(h.State.RotationId)
+func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool) error {
+	h.eventSync.SetCorrelationId(h.State.GetCorrelationId())
 	var err error
 	defer h.eventSync.Notify(completeEvent, err)
 	h.eventSync.Notify(startEvent, nil)
@@ -102,16 +127,17 @@ func (h *CertRotationHandler) execute(startEvent, completeEvent string, restart 
 	if err = h.Save(); err != nil {
 		return fmt.Errorf("Unable to save initial state: %w", err)
 	}
+	currentIdx := h.State.GetCurrentStep()
 	for idx, step := range h.steps {
-		if idx < h.State.StepIdx {
+		if idx < currentIdx {
 			log.Printf("Step already completed: %s", step.Name())
 		} else {
 			log.Printf("Executing step: %s", step.Name())
-			if err = step.Execute(h); err != nil {
+			if err = step.Execute(&h.stateContext); err != nil {
 				h.eventSync.Notify(step.Name(), err)
 				return err
 			}
-			h.State.StepIdx += 1
+			currentIdx = h.State.MoveToNextStep()
 			h.eventSync.Notify(step.Name(), nil)
 			if err = h.Save(); err != nil {
 				return fmt.Errorf("Unable to save state: %w", err)
@@ -130,7 +156,7 @@ func (h *CertRotationHandler) execute(startEvent, completeEvent string, restart 
 	return err
 }
 
-func (h *CertRotationHandler) RestartServices() {
+func (h *stateHandler[T]) RestartServices() {
 	if h.cienv {
 		fmt.Println("Skipping systemctl restarts for CI")
 		return

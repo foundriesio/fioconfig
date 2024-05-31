@@ -5,9 +5,8 @@ import (
 )
 
 type CertRotationState struct {
+	BaseState
 	EstServer   string
-	RotationId  string // A unique ID to identify this rotation operation with
-	StepIdx     int
 	PkeySlotIds []string // Available IDs we can use when generating a new key
 	CertSlotIds []string // Available IDs we can use when saving the new cert
 
@@ -25,24 +24,41 @@ type CertRotationState struct {
 	Finalized bool
 }
 
+type certRotationContext = stateContext[*CertRotationState]
+type certRotationStep = stateStep[*CertRotationState]
+
+// Not type CertRotationHandler stateHandler[*CertRotationState].
+// We want methods from a parent to be inherited, thus use struct composition.
+type CertRotationHandler struct {
+	stateHandler[*CertRotationState]
+}
+
 // NewCertRotationHandler constructs a new handler to initiate a rotation with
 func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotationHandler {
-	state := CertRotationState{EstServer: estServer}
-	steps := []CertRotationStep{
-		&estStep{},
-		&lockStep{},
-		&fullCfgStep{},
-		&deviceCfgStep{},
-		&finalizeStep{},
+	state := &CertRotationState{EstServer: estServer}
+	return &CertRotationHandler{
+		stateHandler[*CertRotationState]{
+			stateContext: newStateContext[*CertRotationState](app, stateFile, state),
+			steps: []certRotationStep{
+				estStep{},
+				lockStep{},
+				fullCfgStep{},
+				deviceCfgStep{},
+				finalizeStep{},
+			},
+		},
 	}
-	return newCertRotationHandler(app, stateFile, state, steps)
 }
 
 // RestoreCertRotationHandler will attempt to load a previous rotation attempt's
 // state and return a handler that can process it. This function returns nil when
 // `stateFile` does not exist
 func RestoreCertRotationHandler(app *App, stateFile string) *CertRotationHandler {
-	return restoreCertRotationHandler(app, stateFile)
+	handler := NewCertRotationHandler(app, stateFile, "")
+	if ok := handler.Restore(); !ok {
+		handler = nil
+	}
+	return handler
 }
 
 func (h *CertRotationHandler) Rotate() error {
@@ -62,7 +78,7 @@ func (h *CertRotationHandler) ResumeRotation(online bool) error {
 		if h.State.DeviceConfigUpdated && !h.State.Finalized {
 			log.Print("Incomplete certificate rotation state found. Will attempt to complete")
 			step := finalizeStep{}
-			if err := step.Execute(h); err != nil {
+			if err := step.Execute(&h.stateContext); err != nil {
 				return err
 			}
 			// By calling save and not renaming the file .completed, `.Rotate`

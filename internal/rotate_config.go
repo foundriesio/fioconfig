@@ -16,7 +16,7 @@ func (s fullCfgStep) Name() string {
 	return "Update local configuration with new key"
 }
 
-func (s fullCfgStep) Execute(handler *CertRotationHandler) error {
+func (s fullCfgStep) Execute(handler *certRotationContext) error {
 	crypto, err := getCryptoHandler(handler)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (s deviceCfgStep) Name() string {
 	return "Update device specific configuration on server with new key"
 }
 
-func (s deviceCfgStep) Execute(handler *CertRotationHandler) error {
+func (s deviceCfgStep) Execute(handler *certRotationContext) error {
 	// Load the new crypto handler
 	crypto, err := getCryptoHandler(handler)
 	if err != nil {
@@ -132,7 +132,7 @@ func encryptConfig(crypto *EciesCrypto, config map[string]*ConfigFile) ([]byte, 
 	return val, nil
 }
 
-func getCryptoHandler(h *CertRotationHandler) (*EciesCrypto, error) {
+func getCryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
 	if !h.usePkcs11() {
 		block, _ := pem.Decode([]byte(h.State.NewKey))
 		key, err := x509.ParseECPrivateKey(block.Bytes)
