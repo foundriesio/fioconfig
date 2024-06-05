@@ -12,18 +12,14 @@ import (
 // EventSync in an interface for sending events to device-gateway. The abstraction
 // makes it easier to write unit tests
 type EventSync interface {
-	NotifyStarted()
-	NotifyStep(name string, err error)
-	NotifyCompleted(err error)
+	Notify(name string, err error)
 	SetCorrelationId(corId string)
 }
 
 type NoOpEventSync struct{}
 
-func (s NoOpEventSync) NotifyStarted()                    {}
-func (s NoOpEventSync) NotifyCompleted(err error)         {}
-func (s NoOpEventSync) NotifyStep(name string, err error) {}
-func (s NoOpEventSync) SetCorrelationId(corId string)     {}
+func (s NoOpEventSync) Notify(name string, err error) {}
+func (s NoOpEventSync) SetCorrelationId(corId string) {}
 
 type DgEventSync struct {
 	client        *http.Client
@@ -35,16 +31,7 @@ type DgEventSync struct {
 func (s *DgEventSync) SetCorrelationId(corId string) {
 	s.correlationId = corId
 }
-func (s *DgEventSync) NotifyStarted() {
-	s.notify("CertRotationStarted", nil)
-}
-func (s *DgEventSync) NotifyCompleted(err error) {
-	s.notify("CertRotationCompleted", err)
-}
-func (s *DgEventSync) NotifyStep(name string, err error) {
-	s.notify(name, err)
-}
-func (s *DgEventSync) notify(event string, err error) {
+func (s *DgEventSync) Notify(event string, err error) {
 	details := ""
 	if err != nil {
 		details = err.Error()

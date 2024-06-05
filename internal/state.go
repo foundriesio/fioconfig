@@ -87,15 +87,15 @@ func restoreCertRotationHandler(app *App, stateFile string) *CertRotationHandler
 	return handler
 }
 
-func (h *CertRotationHandler) execute() error {
+func (h *CertRotationHandler) execute(startEvent, completeEvent string) error {
 	if len(h.State.RotationId) == 0 {
 		h.State.RotationId = fmt.Sprintf("certs-%d", time.Now().Unix())
 		log.Printf("Setting default rotation id to: %s", h.State.RotationId)
 	}
 	h.eventSync.SetCorrelationId(h.State.RotationId)
 	var err error
-	defer h.eventSync.NotifyCompleted(err)
-	h.eventSync.NotifyStarted()
+	defer h.eventSync.Notify(completeEvent, err)
+	h.eventSync.Notify(startEvent, nil)
 
 	// Before we even start - we should save our initial state (ie EstServer)
 	// and also make sure we *can* save our state.
@@ -108,11 +108,11 @@ func (h *CertRotationHandler) execute() error {
 		} else {
 			log.Printf("Executing step: %s", step.Name())
 			if err = step.Execute(h); err != nil {
-				h.eventSync.NotifyStep(step.Name(), err)
+				h.eventSync.Notify(step.Name(), err)
 				return err
 			}
 			h.State.StepIdx += 1
-			h.eventSync.NotifyStep(step.Name(), nil)
+			h.eventSync.Notify(step.Name(), nil)
 			if err = h.Save(); err != nil {
 				return fmt.Errorf("Unable to save state: %w", err)
 			}

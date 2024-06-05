@@ -46,7 +46,7 @@ func RestoreCertRotationHandler(app *App, stateFile string) *CertRotationHandler
 }
 
 func (h *CertRotationHandler) Rotate() error {
-	return h.execute()
+	return h.execute("CertRotationStarted", "CertRotationCompleted")
 }
 
 // ResumeRotation checks if we have an incomplete cert rotation. If so, it
