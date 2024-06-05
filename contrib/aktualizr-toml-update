@@ -6,36 +6,46 @@ SOTA_CLIENT=aktualizr-lite
 # It copies the toml file to /etc/sota/conf.d/ and will restart aktualizr-lite
 
 [ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
+[ -z "$SOTA_DIR" ] && (echo "No SOTA_DIR specified"; exit 1)
 
-
-if [ -z "$SOTA_DIR" ]; then
-    SOTA_DIR="/var/sota"
-    echo "WARNING: SOTA_DIR not defined, defaulting to $SOTA_DIR"
-fi
+ORIGIFS="$IFS"
+IFS=","
+for s in $SOTA_DIR ; do
+	if [[ "$s" == */sota.toml ]] ; then
+		SOTA_CONF=$s
+		break
+	fi
+done
+IFS=$ORIGIFS
+[ -n "$SOTA_CONF" ] && echo "Primary sota.toml is $SOTA_CONF"
 
 
 if [ -f $CONFIG_FILE ] ; then
 	mkdir -p -m 0700 /etc/sota/conf.d/
 	cp $CONFIG_FILE /etc/sota/conf.d/
 
-	# If we take control of tags/apps, then we should try and remove from sota.toml.
-	# Note: there is no way to surrender that control other than remove config altogether.
-	if grep -q "^\s*tags\s*=" $CONFIG_FILE 2>/dev/null ; then
-		sed -e '/^\s*tags\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i "${SOTA_DIR}/sota.toml"
-	else
-		sed -r 's/^# MANAGED BY FIOCONFIG:\s*(tags\s*=)/\1/g' -i "${SOTA_DIR}/sota.toml"
-	fi
+	if [ -n "$SOTA_CONF" ] ; then
+		# If we take control of tags/apps, then we should try and remove from sota.toml.
+		# Note: there is no way to surrender that control other than remove config altogether.
+		if grep -q "^\s*tags\s*=" $CONFIG_FILE 2>/dev/null ; then
+			sed -e '/^\s*tags\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i "${SOTA_CONF}"
+		else
+			sed -r 's/^# MANAGED BY FIOCONFIG:\s*(tags\s*=)/\1/g' -i "${SOTA_CONF}"
+		fi
 
-	if grep -q "^\s*compose_apps\s*=" $CONFIG_FILE 2>/dev/null ; then
-		sed -e '/^\s*compose_apps\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i "${SOTA_DIR}/sota.toml"
-	else
-		sed -r 's/^# MANAGED BY FIOCONFIG:\s*(compose_apps\s*=)/\1/g' -i "${SOTA_DIR}/sota.toml"
+		if grep -q "^\s*compose_apps\s*=" $CONFIG_FILE 2>/dev/null ; then
+			sed -e '/^\s*compose_apps\s*=/ s/^/# MANAGED BY FIOCONFIG: /' -i "${SOTA_CONF}"
+		else
+			sed -r 's/^# MANAGED BY FIOCONFIG:\s*(compose_apps\s*=)/\1/g' -i "${SOTA_CONF}"
+		fi
 	fi
 else
 	rm -f /etc/sota/conf.d/$(basename $CONFIG_FILE)
 
-	# Restore an original control of tags/apps in sota.toml.
-	sed -e 's/^# MANAGED BY FIOCONFIG: //g' -i "${SOTA_DIR}/sota.toml"
+	if [ -n "$SOTA_CONF" ] ; then
+		# Restore an original control of tags/apps in sota.toml.
+		sed -e 's/^# MANAGED BY FIOCONFIG: //g' -i "${SOTA_CONF}"
+	fi
 fi
 
 systemctl restart ${SOTA_CLIENT}
