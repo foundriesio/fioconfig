@@ -18,7 +18,7 @@ func NewApp(c *cli.Context) (*internal.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.Command.Name == "renew-cert" {
+	if c.Command.Name == "renew-cert" || c.Command.Name == "renew-root" {
 		return app, nil
 	}
 	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
@@ -108,6 +108,28 @@ func renewCert(c *cli.Context) error {
 	return err
 }
 
+func renewRoot(c *cli.Context) error {
+	app, err := NewApp(c)
+	if err != nil {
+		return err
+	}
+	if c.NArg() != 1 && c.NArg() != 2 {
+		cli.ShowCommandHelpAndExit(c, "renew-root", 1)
+	}
+	server := c.Args().Get(0)
+	stateFile := filepath.Join(app.StorageDir, "root-ca-update.state")
+	handler := internal.NewRootRenewalHandler(app, stateFile, server)
+	if c.NArg() == 2 {
+		handler.State.CorrelationId = c.Args().Get(1)
+	}
+
+	log.Printf("Performing root certificate update")
+	if err = handler.Update(); err == nil {
+		log.Print("Root certificate update sequence complete")
+	}
+	return err
+}
+
 func main() {
 	app := &cli.App{
 		Name:  "fioconfig",
@@ -182,6 +204,14 @@ func main() {
 						Value: "03,09",
 						Usage: "The two pkcs11 slot IDs to use for client certificates",
 					},
+				},
+			},
+			{
+				Name:     "renew-root",
+				HelpName: "renew-root <EST Server> [<rotation-id>]",
+				Usage:    "Renew device's TLS root CA used with device-gateway",
+				Action: func(c *cli.Context) error {
+					return renewRoot(c)
 				},
 			},
 			{
