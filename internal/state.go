@@ -87,7 +87,7 @@ func restoreCertRotationHandler(app *App, stateFile string) *CertRotationHandler
 	return handler
 }
 
-func (h *CertRotationHandler) execute(startEvent, completeEvent string) error {
+func (h *CertRotationHandler) execute(startEvent, completeEvent string, restart bool) error {
 	if len(h.State.RotationId) == 0 {
 		h.State.RotationId = fmt.Sprintf("certs-%d", time.Now().Unix())
 		log.Printf("Setting default rotation id to: %s", h.State.RotationId)
@@ -120,10 +120,12 @@ func (h *CertRotationHandler) execute(startEvent, completeEvent string) error {
 	}
 	err = os.Rename(h.stateFile, h.stateFile+".completed")
 
-	// restart aklite and fioconfig *after* being "complete". Otherwise,
-	// we could wind up in a loop of: try-to-complete-rotation,
-	// restart-ourself-before marking complete
-	h.RestartServices()
+	if restart {
+		// Restart aklite and fioconfig *after* being "complete".
+		// Otherwise, we could wind up in a loop of:
+		// try-to-complete-rotation, restart-ourself before marking complete.
+		h.RestartServices()
+	}
 
 	return err
 }
