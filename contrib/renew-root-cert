@@ -1,0 +1,49 @@
+#!bin/sh -e
+
+# This is an OnChanged handler that can handle requests to renew
+# the factory root CA certificate used to verify the device gateway TLS certificate.
+
+[ -z "$CONFIG_FILE" ] && (echo "No CONFIG_FILE specified"; exit 1)
+[ -f "$CONFIG_FILE" ] || (echo "$CONFIG_FILE does not exist"; exit 1)
+[ -z "$SOTA_DIR" ] && (echo "No SOTA_DIR specified"; exit 1)
+
+fioconfig="$FIOCONFIG_BIN"
+if [ -z "$fioconfig" ] ; then
+	fioconfig=$(which fioconfig)
+fi
+
+correlation_id=$(cat $CONFIG_FILE | grep CORRELATIONID | cut -d= -f2)
+[ -z "$correlation_id" ] && (echo "No CORRELATIONID found in config file"; exit 1)
+echo "Correlation ID for root CA update is $correlation_id"
+
+est_server=$(cat $CONFIG_FILE | grep ESTSERVER | cut -d= -f2)
+[ -z "$est_server" ] && (echo "No ESTSERVER found in config file"; exit 1)
+echo "EST server for update is $est_server"
+
+update() {
+	if ! $fioconfig renew-root $est_server $correlation_id ; then
+		exit 123
+	fi
+	exit 0
+}
+
+# We'll execute under two conditions:
+# 1) A root update has never taken place (root-update.state.completed does not exist)
+# 2) We need to do a new root update ($correlation_id != root-update.state.completed's CorrelationId)
+
+active_file="${STORAGE_DIR}/root-ca-update.state"
+completed_file="${active_file}.completed"
+
+if [ ! -f "$completed_file" ] ; then
+	echo "Updating root CA: root-ca-update.state.completed does not exist"
+	update
+fi
+
+idmatch=$(grep -Po '"CorrelationId":.*?[^\\]",' $completed_file || true)
+completed_id=$(echo $idmatch | cut -d\"  -f4)
+if [ "$completed_id" !=  "$correlation_id" ] ; then
+	echo "Updating root CA: Correlation ID has changed from $completed_id -> $correlation_id"
+	update
+fi
+
+echo "Root CA update not needed. Current correlation ID is $correlation_id"
