@@ -14,7 +14,13 @@ import (
 )
 
 func NewApp(c *cli.Context) (*internal.App, error) {
-	app, err := internal.NewApp(c.StringSlice("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
+	app, err := internal.NewApp(
+		c.StringSlice("config"),
+		c.String("secrets-dir"),
+		c.Bool("unsafe-handlers"),
+		c.Bool("unsafe-ca-renewal"),
+		false,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +159,11 @@ func main() {
 				Name:    "unsafe-handlers",
 				Usage:   "Enable running on-changed handlers defined outside of /usr/share/fioconfig/handlers/",
 				EnvVars: []string{"UNSAFE_CALLBACKS"},
+			},
+			&cli.BoolFlag{
+				Name:    "unsafe-ca-renewal",
+				Usage:   "Skip certificate signature validation during root CA renewal",
+				EnvVars: []string{"UNSAFE_CA_RENEWAL"},
 			},
 		},
 		Commands: []*cli.Command{

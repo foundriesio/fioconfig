@@ -80,7 +80,7 @@ func (s fetchRootStep) Execute(h *rootRenewalContext) error {
 		return err
 	}
 
-	if err = validateRootCerts(caCerts, certs); err != nil {
+	if err = validateRootCerts(caCerts, certs, h.app.unsafeCaRenewal); err != nil {
 		return fmt.Errorf("Error validating root certificates: %w", err)
 	}
 
@@ -118,7 +118,7 @@ type publicKey interface {
 	Equal(x crypto.PublicKey) bool
 }
 
-func validateRootCerts(curCerts, newCerts []*x509.Certificate) error {
+func validateRootCerts(curCerts, newCerts []*x509.Certificate, skipSignatureCheck bool) error {
 	// Each new certificate must pass all of the below checks:
 	// 1. It is a valid certificate authority.
 	// 2. Its subject is exactly the same as a subject of one of the current CAs.
@@ -148,6 +148,10 @@ func validateRootCerts(curCerts, newCerts []*x509.Certificate) error {
 			return fmt.Errorf("Certificate with serial %s failed basic constraints validation", serial)
 		}
 		// First loop identifies certificates matching condition 3.2.
+		if skipSignatureCheck {
+			skipKeyCheck[idx] = true
+			continue
+		}
 		for _, ca := range curCerts {
 			if cert.Equal(ca) {
 				skipKeyCheck[idx] = true
