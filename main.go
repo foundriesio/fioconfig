@@ -27,13 +27,20 @@ func NewApp(c *cli.Context) (*internal.App, error) {
 	if c.Command.Name == "renew-cert" || c.Command.Name == "renew-root" {
 		return app, nil
 	}
-	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
-	handler := internal.RestoreCertRotationHandler(app, stateFile)
-	if handler != nil {
-		online := c.Command.Name != "extract"
-		err = handler.ResumeRotation(online)
+	online := c.Command.Name != "extract"
+	stateFile := filepath.Join(app.StorageDir, "root-ca-update.state")
+	if handler := internal.RestoreRootRenewalHandler(app, stateFile); handler != nil {
+		if err = handler.Resume(online); err != nil {
+			return nil, err
+		}
 	}
-	return app, err
+	stateFile = filepath.Join(app.StorageDir, "cert-rotation.state")
+	if handler := internal.RestoreCertRotationHandler(app, stateFile); handler != nil {
+		if err = handler.ResumeRotation(online); err != nil {
+			return nil, err
+		}
+	}
+	return app, nil
 }
 
 func extract(c *cli.Context) error {

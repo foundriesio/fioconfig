@@ -38,8 +38,25 @@ func NewRootRenewalHandler(app *App, stateFile, estServer string) *RootRenewalHa
 	}
 }
 
+func RestoreRootRenewalHandler(app *App, stateFile string) *RootRenewalHandler {
+	handler := NewRootRenewalHandler(app, stateFile, "")
+	if ok := handler.Restore(); !ok {
+		handler = nil
+	}
+	return handler
+}
+
 func (h *RootRenewalHandler) Update() error {
 	return h.execute("RootCaUpdateStarted", "RootCaUpdateCompleted", true)
+}
+
+func (h *RootRenewalHandler) Resume(online bool) error {
+	if !online {
+		log.Print("Incomplete root CA renewal state found.")
+		return nil
+	}
+	log.Print("Incomplete root CA renewal state found. Will attempt to complete")
+	return h.Update()
 }
 
 type fetchRootStep struct{}
