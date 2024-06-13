@@ -150,8 +150,8 @@ func validateRootCerts(curCerts, newCerts []*x509.Certificate, skipSignatureChec
 	//   B1. A new CA with the same public key as the CA `B`, signed by a current CA.
 	// - At second phase, the EST server returns only the CA `B` from the above.
 	subj := curCerts[0].Subject.String() // All certs must have the same subject
-	signedKeys := make([]publicKey, 1)
-	skipKeyCheck := make([]bool, len(newCerts))
+	signedKeys := make([]publicKey, 0, 1)
+	skipKeyCheck := make([]bool, len(newCerts)) // pre-initialized to false
 	for idx, cert := range newCerts {
 		serial := cert.SerialNumber.String()
 		if cert.Subject.String() != subj {
