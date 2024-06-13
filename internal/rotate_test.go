@@ -34,42 +34,14 @@ func (t testStep) Execute(_ *certRotationContext) error {
 	return t.execError
 }
 
-type testClient struct {
-	srv    *httptest.Server
-	client *http.Client
-}
-
-func WithEstServer(t *testing.T, testFunc func(tc testClient)) {
-	kp, err := tls.X509KeyPair([]byte(client_pem), []byte(pkey_pem))
-	require.Nil(t, err)
-
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// A dumb server that just returns the same cert back to the requestor
-		w.Header().Add("content-type", "application/pkcs7-mime")
-		w.WriteHeader(201)
-		bytes, err := pkcs7.DegenerateCertificate(kp.Certificate[0])
-		require.Nil(t, err)
-		bytes = []byte(base64.StdEncoding.EncodeToString(bytes))
-		_, err = w.Write(bytes)
-		require.Nil(t, err)
-	}))
-
+func WithEstServer(t *testing.T, doGet http.HandlerFunc, testFunc func(estServerUrl string)) {
+	srv := httptest.NewUnstartedServer(doGet)
 	srv.TLS = &tls.Config{
 		ClientAuth: tls.RequestClientCert,
 	}
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
-
-	client := srv.Client()
-	transport := client.Transport.(*http.Transport)
-	transport.TLSClientConfig.Certificates = []tls.Certificate{kp}
-
-	tc := testClient{
-		srv:    srv,
-		client: client,
-	}
-
-	testFunc(tc)
+	testFunc(srv.URL + "/.well-known/est")
 }
 
 func TestRotationHandler(t *testing.T) {
@@ -112,16 +84,41 @@ func TestRotationHandler(t *testing.T) {
 }
 
 func TestEst(t *testing.T) {
-	WithEstServer(t, func(tc testClient) {
-		testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+	kp, err := tls.X509KeyPair([]byte(client_pem), []byte(pkey_pem))
+	require.Nil(t, err)
+	certDer := kp.Certificate[0]
+	keyDer, err := x509.MarshalECPrivateKey(kp.PrivateKey.(*ecdsa.PrivateKey))
+	require.Nil(t, err)
+	bytes, err := pkcs7.DegenerateCertificate(certDer)
+	require.Nil(t, err)
+	bytes = []byte(base64.StdEncoding.EncodeToString(bytes))
+
+	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A dumb server that just returns the same cert back to the requestor
+		require.Equal(t, "/.well-known/est/simplereenroll", r.URL.Path)
+		require.Equal(t, 1, len(r.TLS.PeerCertificates))
+		require.Equal(t, certDer, r.TLS.PeerCertificates[0].Raw)
+		w.Header().Add("content-type", "application/pkcs7-mime")
+		w.WriteHeader(201)
+		_, err = w.Write(bytes)
+		require.Nil(t, err)
+	})
+
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		WithEstServer(t, doGet, func(estServerUrl string) {
 			stateFile := filepath.Join(tmpdir, "rotate.state")
-			handler := NewCertRotationHandler(app, stateFile, tc.srv.URL+"/.well-known/est")
+			handler := NewCertRotationHandler(app, stateFile, estServerUrl)
 
 			step := estStep{}
 
 			require.Nil(t, step.Execute(&handler.stateContext))
+			// A dumb server returns the same cert, but estStep must generate a new key
 			require.True(t, len(handler.State.NewCert) > 0)
 			require.True(t, len(handler.State.NewKey) > 0)
+			block, _ := pem.Decode([]byte(handler.State.NewCert))
+			require.Equal(t, certDer, block.Bytes)
+			block, _ = pem.Decode([]byte(handler.State.NewKey))
+			require.NotEqual(t, keyDer, block.Bytes)
 		})
 	})
 }
