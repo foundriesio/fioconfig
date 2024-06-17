@@ -453,6 +453,10 @@ func TestRenewRoot(t *testing.T) {
 		WithEstServer(t, doGet(initialCa, newCaCrossSigned, newCa), func(estServerUrl string) {
 			h := handler(estServerUrl)
 			require.Nil(t, h.Update())
+			// At this point the CA list contains both old and new CA, verify that connection works well.
+			client, _ := createClient(app.sota)
+			_, err = httpDoOnce(client, "GET", app.configUrl, nil, nil)
+			require.Nil(t, err)
 		})
 
 		// Important: This must be the last test, as it stops accepting the test server TLS cert.
@@ -460,6 +464,12 @@ func TestRenewRoot(t *testing.T) {
 		WithEstServer(t, doGet(newCa), func(estServerUrl string) {
 			h := handler(estServerUrl)
 			require.Nil(t, h.Update())
+			// At this point the CA list only contains a new CA, so connection to server with old CA fails.
+			client, _ := createClient(app.sota)
+			_, err = httpDoOnce(client, "GET", app.configUrl, nil, nil)
+			require.NotNil(t, err)
+			require.ErrorContains(
+				t, err, "tls: failed to verify certificate: x509: certificate signed by unknown authority")
 		})
 	})
 }
