@@ -4,8 +4,10 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/ThalesIgnite/crypto11"
 )
@@ -26,6 +28,9 @@ func (s fullCfgStep) Execute(handler *certRotationContext) error {
 	// Open/decrypt full config with current key
 	config, err := UnmarshallFile(handler.crypto, handler.app.EncryptedConfig, true)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) { // os.IsNotExist does not work on wrapped errors
+			return nil
+		}
 		return fmt.Errorf("Unable open current encrypted config: %w", err)
 	}
 

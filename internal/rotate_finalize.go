@@ -46,9 +46,11 @@ func (s finalizeStep) Execute(handler *certRotationContext) error {
 		return err
 	}
 
-	path := filepath.Join(storagePath, "config.encrypted")
-	if err := safeWrite(path, []byte(handler.State.FullConfigEncrypted)); err != nil {
-		return fmt.Errorf("Error updating config.encrypted: %w", err)
+	if len(handler.State.FullConfigEncrypted) > 0 {
+		path := filepath.Join(storagePath, "config.encrypted")
+		if err := safeWrite(path, []byte(handler.State.FullConfigEncrypted)); err != nil {
+			return fmt.Errorf("Error updating config.encrypted: %w", err)
+		}
 	}
 	handler.State.Finalized = true
 	return nil
