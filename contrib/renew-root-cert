@@ -39,7 +39,7 @@ if [ ! -f "$completed_file" ] ; then
 	update
 fi
 
-idmatch=$(grep -Po '"CorrelationId":.*?[^\\]",' $completed_file || true)
+idmatch=$(grep -Po '"RotationId":.*?[^\\]",' $completed_file || true)
 completed_id=$(echo $idmatch | cut -d\"  -f4)
 if [ "$completed_id" !=  "$correlation_id" ] ; then
 	echo "Updating root CA: Correlation ID has changed from $completed_id -> $correlation_id"
