@@ -4,18 +4,22 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.mozilla.org/pkcs7"
@@ -34,42 +38,14 @@ func (t testStep) Execute(_ *certRotationContext) error {
 	return t.execError
 }
 
-type testClient struct {
-	srv    *httptest.Server
-	client *http.Client
-}
-
-func WithEstServer(t *testing.T, testFunc func(tc testClient)) {
-	kp, err := tls.X509KeyPair([]byte(client_pem), []byte(pkey_pem))
-	require.Nil(t, err)
-
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// A dumb server that just returns the same cert back to the requestor
-		w.Header().Add("content-type", "application/pkcs7-mime")
-		w.WriteHeader(201)
-		bytes, err := pkcs7.DegenerateCertificate(kp.Certificate[0])
-		require.Nil(t, err)
-		bytes = []byte(base64.StdEncoding.EncodeToString(bytes))
-		_, err = w.Write(bytes)
-		require.Nil(t, err)
-	}))
-
+func WithEstServer(t *testing.T, doGet http.HandlerFunc, testFunc func(estServerUrl string)) {
+	srv := httptest.NewUnstartedServer(doGet)
 	srv.TLS = &tls.Config{
 		ClientAuth: tls.RequestClientCert,
 	}
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
-
-	client := srv.Client()
-	transport := client.Transport.(*http.Transport)
-	transport.TLSClientConfig.Certificates = []tls.Certificate{kp}
-
-	tc := testClient{
-		srv:    srv,
-		client: client,
-	}
-
-	testFunc(tc)
+	testFunc(srv.URL + "/.well-known/est")
 }
 
 func TestRotationHandler(t *testing.T) {
@@ -112,16 +88,41 @@ func TestRotationHandler(t *testing.T) {
 }
 
 func TestEst(t *testing.T) {
-	WithEstServer(t, func(tc testClient) {
-		testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+	kp, err := tls.X509KeyPair([]byte(client_pem), []byte(pkey_pem))
+	require.Nil(t, err)
+	certDer := kp.Certificate[0]
+	keyDer, err := x509.MarshalECPrivateKey(kp.PrivateKey.(*ecdsa.PrivateKey))
+	require.Nil(t, err)
+	bytes, err := pkcs7.DegenerateCertificate(certDer)
+	require.Nil(t, err)
+	bytes = []byte(base64.StdEncoding.EncodeToString(bytes))
+
+	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A dumb server that just returns the same cert back to the requestor
+		require.Equal(t, "/.well-known/est/simplereenroll", r.URL.Path)
+		require.Equal(t, 1, len(r.TLS.PeerCertificates))
+		require.Equal(t, certDer, r.TLS.PeerCertificates[0].Raw)
+		w.Header().Add("content-type", "application/pkcs7-mime")
+		w.WriteHeader(201)
+		_, err = w.Write(bytes)
+		require.Nil(t, err)
+	})
+
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		WithEstServer(t, doGet, func(estServerUrl string) {
 			stateFile := filepath.Join(tmpdir, "rotate.state")
-			handler := NewCertRotationHandler(app, stateFile, tc.srv.URL+"/.well-known/est")
+			handler := NewCertRotationHandler(app, stateFile, estServerUrl)
 
 			step := estStep{}
 
 			require.Nil(t, step.Execute(&handler.stateContext))
+			// A dumb server returns the same cert, but estStep must generate a new key
 			require.True(t, len(handler.State.NewCert) > 0)
 			require.True(t, len(handler.State.NewKey) > 0)
+			block, _ := pem.Decode([]byte(handler.State.NewCert))
+			require.Equal(t, certDer, block.Bytes)
+			block, _ = pem.Decode([]byte(handler.State.NewKey))
+			require.NotEqual(t, keyDer, block.Bytes)
 		})
 	})
 }
@@ -298,5 +299,177 @@ func TestRotateFinalize(t *testing.T) {
 
 		_, err = os.ReadFile(filepath.Join(tmpdir, "config.encrypted"))
 		require.Nil(t, err)
+	})
+}
+
+func TestRenewRoot(t *testing.T) {
+	doGet := func(caList ...*x509.Certificate) http.HandlerFunc {
+		envelope, err := pkcs7.NewSignedData(nil)
+		require.Nil(t, err)
+		for _, cert := range caList {
+			envelope.AddCertificate(cert)
+		}
+		bytes, err := envelope.Finish()
+		require.Nil(t, err)
+		bytes = []byte(base64.StdEncoding.EncodeToString(bytes))
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A dumb server that just returns the same cert back to the requestor
+			require.Equal(t, "/.well-known/est/cacerts", r.URL.Path)
+			w.Header().Add("content-type", "application/pkcs7-mime")
+			w.WriteHeader(200)
+			_, err = w.Write(bytes)
+			require.Nil(t, err)
+		})
+	}
+
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		handler := func(estServerUrl string) *RootRenewalHandler {
+			stateFile := filepath.Join(tmpdir, "renew.state")
+			h := NewRootRenewalHandler(app, stateFile, estServerUrl)
+			h.cienv = true
+			h.eventSync = NoOpEventSync{}
+			return h
+		}
+		// Load initial CA cert and key
+		bytes, err := os.ReadFile(filepath.Join(tmpdir, "root.crt"))
+		require.Nil(t, err)
+		block, _ := pem.Decode(bytes)
+		initialCa, err := x509.ParseCertificate(block.Bytes)
+		require.Nil(t, err)
+		bytes, err = os.ReadFile(filepath.Join(tmpdir, "root.key"))
+		require.Nil(t, err)
+		initialKey, err := x509.ParsePKCS8PrivateKey(bytes)
+		require.Nil(t, err)
+		initialKeyRsa := initialKey.(*rsa.PrivateKey) // Golang test keys are RSA
+		// Use a common CA template for all happy path tests
+		newCaTmpl := &x509.Certificate{
+			SerialNumber:          initialCa.SerialNumber,
+			Subject:               initialCa.Subject,
+			NotAfter:              time.Now().AddDate(1, 0, 0),
+			BasicConstraintsValid: true,
+			IsCA:                  true,
+			KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		}
+		var ii big.Int
+		one := big.NewInt(1)
+		// Generate the same CA with a different validity period
+		newCaTmpl.SerialNumber = ii.Add(newCaTmpl.SerialNumber, one)
+		newCaBytes, err := x509.CreateCertificate(
+			rand.Reader, newCaTmpl, newCaTmpl, &initialKeyRsa.PublicKey, initialKeyRsa)
+		require.Nil(t, err)
+		sameCa, err := x509.ParseCertificate(newCaBytes)
+		require.Nil(t, err)
+		// Generate a new self-signed CA with a different key
+		newCaTmpl.SerialNumber = ii.Add(newCaTmpl.SerialNumber, one)
+		newKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.Nil(t, err)
+		newCaBytes, err = x509.CreateCertificate(
+			rand.Reader, newCaTmpl, newCaTmpl, &newKey.PublicKey, newKey)
+		require.Nil(t, err)
+		newCa, err := x509.ParseCertificate(newCaBytes)
+		require.Nil(t, err)
+		// Generate a new CA with the same key as above which is cross-signed by the initial CA
+		newCaTmpl.SerialNumber = ii.Add(newCaTmpl.SerialNumber, one)
+		newCaBytes, err = x509.CreateCertificate(
+			rand.Reader, newCaTmpl, initialCa, &newKey.PublicKey, initialKeyRsa)
+		require.Nil(t, err)
+		newCaCrossSigned, err := x509.ParseCertificate(newCaBytes)
+		require.Nil(t, err)
+		// Generate a new cert which is not a CA cert
+		newCaTmpl.SerialNumber = ii.Add(newCaTmpl.SerialNumber, one)
+		newCaTmpl.IsCA = false
+		newCaBytes, err = x509.CreateCertificate(
+			rand.Reader, newCaTmpl, initialCa, &initialKeyRsa.PublicKey, initialKeyRsa)
+		require.Nil(t, err)
+		nonCa, err := x509.ParseCertificate(newCaBytes)
+		require.Nil(t, err)
+		// Generate a new CA which a different subject and the same key as existing CA
+		newCaTmpl.SerialNumber = ii.Add(newCaTmpl.SerialNumber, one)
+		newCaTmpl.IsCA = true
+		newCaTmpl.Subject = pkix.Name{CommonName: "test"}
+		newCaBytes, err = x509.CreateCertificate(
+			rand.Reader, newCaTmpl, initialCa, &initialKeyRsa.PublicKey, initialKeyRsa)
+		require.Nil(t, err)
+		diffCa, err := x509.ParseCertificate(newCaBytes)
+		require.Nil(t, err)
+
+		// Fail when EST server returns no cacerts
+		WithEstServer(t, doGet(), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			err := h.Update()
+			require.NotNil(t, err)
+			require.Equal(t, "Invalid pkcs7 data in EST response: no certificates", err.Error())
+		})
+
+		// Fail when EST server returns a non-CA cert
+		WithEstServer(t, doGet(initialCa, nonCa), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			err := h.Update()
+			require.NotNil(t, err)
+			require.Equal(t, "Error validating root certificates: Certificate with serial "+
+				nonCa.SerialNumber.String()+" is not a certificate authority",
+				err.Error())
+		})
+
+		// Fail when EST server returns a CA cert with a different subject
+		WithEstServer(t, doGet(initialCa, diffCa), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			err := h.Update()
+			require.NotNil(t, err)
+			require.Equal(t, "Error validating root certificates: "+
+				"Unexpected subject 'CN=test' in certificate with serial "+
+				diffCa.SerialNumber.String()+", must be 'O=Acme Co'",
+				err.Error())
+		})
+
+		// Fail when EST server returns a new CA which is not signed by existing CA
+		WithEstServer(t, doGet(newCa), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			err := h.Update()
+			require.NotNil(t, err)
+			require.Equal(t, "Error validating root certificates: Certificate with serial "+
+				newCa.SerialNumber.String()+" is neither (1) signed by one of current CAs "+
+				"nor (2) has the same public key as another certificate which is signed by one of current CAs",
+				err.Error())
+		})
+
+		// Succeed when EST server returns the same root CA as locally stored
+		WithEstServer(t, doGet(initialCa), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			require.Nil(t, h.Update())
+		})
+
+		// [Extension] Succeed when EST server returns a new root CA with the same key
+		WithEstServer(t, doGet(sameCa), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			require.Nil(t, h.Update())
+		})
+
+		// [Replacement phase 1] Succeed when EST server returns cacerts with 3 certs:
+		// - the first is the same as the current CA;
+		// - the second is signed by the current CA;
+		// - the third is self-signed and has the same public key as the second one.
+		WithEstServer(t, doGet(initialCa, newCaCrossSigned, newCa), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			require.Nil(t, h.Update())
+			// At this point the CA list contains both old and new CA, verify that connection works well.
+			client, _ := createClient(app.sota)
+			_, err = httpDoOnce(client, "GET", app.configUrl, nil, nil)
+			require.Nil(t, err)
+		})
+
+		// Important: This must be the last test, as it stops accepting the test server TLS cert.
+		// [Replacement phase 2] Succeed when EST server returns a subset of current CA certs.
+		WithEstServer(t, doGet(newCa), func(estServerUrl string) {
+			h := handler(estServerUrl)
+			require.Nil(t, h.Update())
+			// At this point the CA list only contains a new CA, so connection to server with old CA fails.
+			client, _ := createClient(app.sota)
+			_, err = httpDoOnce(client, "GET", app.configUrl, nil, nil)
+			require.NotNil(t, err)
+			require.ErrorContains(
+				t, err, "tls: failed to verify certificate: x509: certificate signed by unknown authority")
+		})
 	})
 }
