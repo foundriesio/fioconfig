@@ -48,4 +48,6 @@ else
 	fi
 fi
 
-systemctl restart ${SOTA_CLIENT}
+if systemctl is-enabled --quiet ${SOTA_CLIENT} ; then
+	systemctl restart ${SOTA_CLIENT}
+fi
