@@ -101,10 +101,14 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	if ct != "application/pkcs7-mime" {
 		return fmt.Errorf("Unexpected content-type return in certificate response: %s", ct)
 	}
-	estCert, err := decodeEstResponse(string(buf))
+	estCerts, err := decodeEstResponse(string(buf))
 	if err != nil {
 		return err
 	}
+	if len(estCerts) > 1 {
+		return fmt.Errorf("Unexpected more than one certificate in response: %d", len(estCerts))
+	}
+	estCert := estCerts[0]
 
 	// Do minimal sanity checking on the new cert
 	if err = verifyNewCert(cert, estCert); err != nil {
@@ -180,7 +184,7 @@ func createB64CsrDer(key crypto.Signer, cert *x509.Certificate) ([]byte, error) 
 	return []byte(base64.StdEncoding.EncodeToString(csrBytes)), nil
 }
 
-func decodeEstResponse(estResponse string) (*x509.Certificate, error) {
+func decodeEstResponse(estResponse string) ([]*x509.Certificate, error) {
 	bytes, err := base64.StdEncoding.DecodeString(estResponse)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to base64 decode EST response: %w", err)
@@ -189,7 +193,10 @@ func decodeEstResponse(estResponse string) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Invalid pkcs7 data in EST response: %w", err)
 	}
-	return p7.Certificates[0], nil
+	if len(p7.Certificates) < 1 {
+		return nil, errors.New("Invalid pkcs7 data in EST response: no certificates")
+	}
+	return p7.Certificates, nil
 }
 
 func verifyNewCert(curCert, newCert *x509.Certificate) error {
