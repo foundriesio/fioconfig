@@ -18,6 +18,7 @@ import (
 	"net/http"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/foundriesio/fioconfig/sotatoml"
 	"github.com/miekg/pkcs11"
 	"go.mozilla.org/pkcs7"
 )
@@ -50,10 +51,10 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	// Generate a new private key
 	if handler.usePkcs11() {
 		newKey = s.nextPkeyId(handler)
-		if err = handler.crypto.ctx.DeleteKeyPair(idToBytes(newKey), []byte("tls")); err != nil {
+		if err = handler.crypto.ctx.DeleteKeyPair(sotatoml.IdToBytes(newKey), []byte("tls")); err != nil {
 			return fmt.Errorf("Unable to free up slot(%s) for new keypair: %w", newKey, err)
 		}
-		pubAttr, err := crypto11.NewAttributeSetWithIDAndLabel(idToBytes(newKey), []byte("tls"))
+		pubAttr, err := crypto11.NewAttributeSetWithIDAndLabel(sotatoml.IdToBytes(newKey), []byte("tls"))
 		if err != nil {
 			return fmt.Errorf("Unable to define pkcs11 attributes for new key: %w", err)
 		}
@@ -114,10 +115,10 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	// Update our state
 	if handler.usePkcs11() {
 		newCert := s.nextCertId(handler)
-		if err = handler.crypto.ctx.DeleteCertificate(idToBytes(newCert), nil, nil); err != nil {
+		if err = handler.crypto.ctx.DeleteCertificate(sotatoml.IdToBytes(newCert), nil, nil); err != nil {
 			return fmt.Errorf("Unable to free up slot(%s) for new cert: %w", newCert, err)
 		}
-		if err = handler.crypto.ctx.ImportCertificateWithLabel(idToBytes(newCert), []byte("client"), estCert); err != nil {
+		if err = handler.crypto.ctx.ImportCertificateWithLabel(sotatoml.IdToBytes(newCert), []byte("client"), estCert); err != nil {
 			return fmt.Errorf("Unable to import new cert into HSM: %w", err)
 		}
 		handler.State.NewCert = newCert

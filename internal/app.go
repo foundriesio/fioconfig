@@ -59,20 +59,6 @@ func tomlAssertVal(cfg *sotatoml.AppConfig, key string, allowed []string) string
 	return val
 }
 
-// sota.toml has slot id's as "01". We need to turn that into []byte{1}
-func idToBytes(id string) []byte {
-	bytes := []byte(id)
-	start := -1
-	for idx, char := range bytes {
-		bytes[idx] = char - byte('0')
-		if bytes[idx] != 0 && start == -1 {
-			start = idx
-		}
-	}
-	//strip off leading 0's
-	return bytes[start:]
-}
-
 func createClientPkcs11(sota *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
 	module := sota.GetOrDie("p11.module")
 	pin := sota.GetOrDie("p11.pass")
@@ -92,11 +78,11 @@ func createClientPkcs11(sota *sotatoml.AppConfig) (*http.Client, CryptoHandler) 
 		log.Fatal(err)
 	}
 
-	privKey, err := ctx.FindKeyPair(idToBytes(pkeyId), nil)
+	privKey, err := ctx.FindKeyPair(sotatoml.IdToBytes(pkeyId), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	cert, err := ctx.FindCertificate(idToBytes(certId), nil, nil)
+	cert, err := ctx.FindCertificate(sotatoml.IdToBytes(certId), nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -173,3 +173,17 @@ func (c AppConfig) UpdateKeys(keyVals map[string]string) error {
 
 	return SafeWrite(cfgFile.path, bytes)
 }
+
+// sota.toml has slot id's as "01". We need to turn that into []byte{1}
+func IdToBytes(id string) []byte {
+	bytes := []byte(id)
+	start := -1
+	for idx, char := range bytes {
+		bytes[idx] = char - byte('0')
+		if bytes[idx] != 0 && start == -1 {
+			start = idx
+		}
+	}
+	//strip off leading 0's
+	return bytes[start:]
+}

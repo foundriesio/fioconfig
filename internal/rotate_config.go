@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/foundriesio/fioconfig/sotatoml"
 )
 
 type fullCfgStep struct{}
@@ -162,7 +163,7 @@ func getCryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
 		return nil, fmt.Errorf("Unable to configure crypto11 library: %w", err)
 	}
 
-	privKey, err := ctx.FindKeyPair(idToBytes(h.State.NewKey), nil)
+	privKey, err := ctx.FindKeyPair(sotatoml.IdToBytes(h.State.NewKey), nil)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to find new HSM private key: %w", err)
 	}
