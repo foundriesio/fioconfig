@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/v22/dbus"
+	"github.com/foundriesio/fioconfig/sotatoml"
 )
 
 type BaseState struct {
@@ -97,7 +98,7 @@ func (h *stateContext[T]) Save() error {
 	if err != nil {
 		return err
 	}
-	return safeWrite(h.stateFile, bytes)
+	return sotatoml.SafeWrite(h.stateFile, bytes)
 }
 
 func (h *stateContext[T]) Restore() (loaded bool) {

@@ -1,4 +1,4 @@
-package internal
+package sotatoml
 
 import (
 	"errors"
@@ -157,7 +157,7 @@ func (c AppConfig) findWritableFile(keyVals map[string]string) (*cfgFile, error)
 	return nil, ErrNoWritableFound
 }
 
-func (c AppConfig) updateKeys(keyVals map[string]string) error {
+func (c AppConfig) UpdateKeys(keyVals map[string]string) error {
 	cfgFile, err := c.findWritableFile(keyVals)
 	if err != nil {
 		return err
@@ -171,5 +171,5 @@ func (c AppConfig) updateKeys(keyVals map[string]string) error {
 		return err
 	}
 
-	return safeWrite(cfgFile.path, bytes)
+	return SafeWrite(cfgFile.path, bytes)
 }

@@ -1,4 +1,4 @@
-package internal
+package sotatoml
 
 import (
 	"os"
@@ -45,7 +45,7 @@ key = "val"`
 	keyvals := map[string]string{
 		"main.foo": "written",
 	}
-	require.Nil(t, cfg.updateKeys(keyvals))
+	require.Nil(t, cfg.UpdateKeys(keyvals))
 
 	cfg2, err := NewAppConfig([]string{usrLib, varSota, etc})
 	require.Nil(t, err)
@@ -55,7 +55,7 @@ key = "val"`
 	keyvals = map[string]string{
 		"main.bar": "mainbar",
 	}
-	require.Nil(t, cfg.updateKeys(keyvals))
+	require.Nil(t, cfg.UpdateKeys(keyvals))
 
 	cfg2, err = NewAppConfig([]string{usrLib, varSota, etc})
 	require.Nil(t, err)
@@ -66,13 +66,13 @@ key = "val"`
 	keyvals = map[string]string{
 		"updates.key": "this must fail",
 	}
-	require.NotNil(t, cfg.updateKeys(keyvals))
+	require.NotNil(t, cfg.UpdateKeys(keyvals))
 
 	// We must reject a keyval that does not exist - this api is for *updates* only
 	keyvals = map[string]string{
 		"updates.not_exist": "this must fail",
 	}
-	err = cfg.updateKeys(keyvals)
+	err = cfg.UpdateKeys(keyvals)
 	require.NotNil(t, err)
 	require.Equal(t, ErrNoWritableFound, err)
 
@@ -86,7 +86,7 @@ key = "val"`
 	defer func() {
 		_ = os.Chmod(usrLib, 0o777)
 	}()
-	err = cfg2.updateKeys(keyvals)
+	err = cfg2.UpdateKeys(keyvals)
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), "unable to write to file:")
 
@@ -99,7 +99,7 @@ key = "val"`
 	cfg2, err = NewAppConfig([]string{varSota, usrLib})
 	require.Nil(t, err)
 	keyvals["main.usrlib"] = "this should work"
-	err = cfg2.updateKeys(keyvals)
+	err = cfg2.UpdateKeys(keyvals)
 	require.Nil(t, err)
 	cfg2, err = NewAppConfig([]string{varSota, usrLib})
 	require.Nil(t, err)
