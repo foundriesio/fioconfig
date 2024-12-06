@@ -2,8 +2,6 @@ package internal
 
 import (
 	"bytes"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"log"
@@ -16,6 +14,7 @@ import (
 
 	"github.com/ThalesIgnite/crypto11"
 	"github.com/foundriesio/fioconfig/sotatoml"
+	"github.com/foundriesio/fioconfig/transport"
 )
 
 const onChangedForceExit = 123
@@ -48,107 +47,22 @@ type App struct {
 	exitFunc func(int)
 }
 
-func tomlAssertVal(cfg *sotatoml.AppConfig, key string, allowed []string) string {
-	val := cfg.GetOrDie(key)
-	for _, v := range allowed {
-		if val == v {
-			return val
+func createClient(cfg *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
+	tlsCfg, extra, err := transport.GetTlsConfig(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	transport := &http.Transport{TLSClientConfig: tlsCfg}
+	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
+
+	if "file" == cfg.Get("tls.pkey_source") {
+		if handler := NewEciesLocalHandler(tlsCfg.Certificates[0].PrivateKey); handler != nil {
+			return client, handler
 		}
+		log.Fatal("unsupported private key")
 	}
-	fmt.Println("ERROR: Invalid value", val, "in sota.toml for", key)
-	return val
-}
-
-func createClientPkcs11(sota *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
-	module := sota.GetOrDie("p11.module")
-	pin := sota.GetOrDie("p11.pass")
-	pkeyId := sota.GetOrDie("p11.tls_pkey_id")
-	certId := sota.GetOrDie("p11.tls_clientcert_id")
-	caFile := sota.GetOrDie("import.tls_cacert_path")
-
-	cfg := crypto11.Config{
-		Path:        module,
-		TokenLabel:  sota.GetDefault("p11.label", "aktualizr"),
-		Pin:         pin,
-		MaxSessions: 2,
-	}
-
-	ctx, err := crypto11.Configure(&cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	privKey, err := ctx.FindKeyPair(sotatoml.IdToBytes(pkeyId), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	cert, err := ctx.FindCertificate(sotatoml.IdToBytes(certId), nil, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if cert == nil || privKey == nil {
-		log.Fatal("Unable to load pkcs11 client cert and/or private key")
-	}
-
-	caCert, err := os.ReadFile(caFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{
-			{
-				Certificate: [][]byte{cert.Raw},
-				PrivateKey:  privKey,
-			},
-		},
-		RootCAs: caCertPool,
-	}
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
-	return client, NewEciesPkcs11Handler(ctx, privKey)
-}
-
-func createClientLocal(sota *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
-	certFile := sota.GetOrDie("import.tls_clientcert_path")
-	keyFile := sota.GetOrDie("import.tls_pkey_path")
-	caFile := sota.GetOrDie("import.tls_cacert_path")
-
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	caCert, err := os.ReadFile(caFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caCertPool,
-	}
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
-
-	if handler := NewEciesLocalHandler(cert.PrivateKey); handler != nil {
-		return client, handler
-	}
-	panic("Unsupported private key")
-}
-
-func createClient(sota *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
-	_ = tomlAssertVal(sota, "tls.ca_source", []string{"file"})
-	source := tomlAssertVal(sota, "tls.pkey_source", []string{"file", "pkcs11"})
-	_ = tomlAssertVal(sota, "tls.cert_source", []string{source})
-	if source == "file" {
-		return createClientLocal(sota)
-	}
-	return createClientPkcs11(sota)
+	ctx := extra.(*crypto11.Context)
+	return client, NewEciesPkcs11Handler(ctx, tlsCfg.Certificates[0].PrivateKey)
 }
 
 func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {

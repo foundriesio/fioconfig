@@ -49,7 +49,7 @@ func (ec *EciesCrypto) Close() {
 	}
 }
 
-func NewEciesPkcs11Handler(ctx *crypto11.Context, privKey crypto11.Signer) CryptoHandler {
+func NewEciesPkcs11Handler(ctx *crypto11.Context, privKey crypto.PrivateKey) CryptoHandler {
 	return &EciesCrypto{ImportPcks11(ctx, privKey), ctx}
 }
 
