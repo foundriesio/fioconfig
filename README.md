@@ -1,3 +1,4 @@
+bump
 This is a simple daemon designed to manage configuration data for an
 embedded device. Its based on a customized OTA Community Edition
 device-gateway endpoint, but the idea used could be generic to any
