@@ -92,6 +92,13 @@ func testWrapper(t *testing.T, doGet http.HandlerFunc, testFunc func(app *App, c
 		t.Fatal(err)
 	}
 	certOut.Close()
+	// The root.key is used by the TestRenewRoot
+	if bytes, err := x509.MarshalPKCS8PrivateKey(ts.TLS.Certificates[0].PrivateKey); err != nil {
+		t.Fatal(err)
+	} else if err = os.WriteFile(filepath.Join(dir, "root.key"), bytes, 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := os.WriteFile(filepath.Join(dir, "pkey.pem"), []byte(pkey_pem), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +146,7 @@ path = "%s"
 	if config["bar"].Value != "bar file value" {
 		t.Fatal("Encryption of bar should not have occurred")
 	}
-	app, err := NewApp([]string{dir}, dir, true, true)
+	app, err := NewApp([]string{dir}, dir, true, false, true)
 	app.configUrl = ts.URL
 	if err != nil {
 		t.Fatal(err)

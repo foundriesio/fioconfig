@@ -39,10 +39,11 @@ type App struct {
 	EncryptedConfig string
 	SecretsDir      string
 
-	configUrl      string
-	configPaths    []string
-	unsafeHandlers bool
-	sota           *AppConfig
+	configUrl       string
+	configPaths     []string
+	unsafeHandlers  bool
+	unsafeCaRenewal bool
+	sota            *AppConfig
 
 	exitFunc func(int)
 }
@@ -164,7 +165,9 @@ func createClient(sota *AppConfig) (*http.Client, CryptoHandler) {
 	return createClientPkcs11(sota)
 }
 
-func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {
+func NewApp(
+	configPaths []string, secrets_dir string, unsafeHandlers, unsafeCaRenewal, testing bool,
+) (*App, error) {
 	if len(configPaths) == 0 {
 		configPaths = DEF_CONFIG_ORDER
 	}
@@ -193,6 +196,7 @@ func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bo
 		configPaths:     configPaths,
 		sota:            sota,
 		unsafeHandlers:  unsafeHandlers,
+		unsafeCaRenewal: unsafeCaRenewal,
 		exitFunc:        os.Exit,
 	}
 

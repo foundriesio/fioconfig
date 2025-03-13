@@ -14,20 +14,33 @@ import (
 )
 
 func NewApp(c *cli.Context) (*internal.App, error) {
-	app, err := internal.NewApp(c.StringSlice("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
+	app, err := internal.NewApp(
+		c.StringSlice("config"),
+		c.String("secrets-dir"),
+		c.Bool("unsafe-handlers"),
+		c.Bool("unsafe-ca-renewal"),
+		false,
+	)
 	if err != nil {
 		return nil, err
 	}
-	if c.Command.Name == "renew-cert" {
+	if c.Command.Name == "renew-cert" || c.Command.Name == "renew-root" {
 		return app, nil
 	}
-	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
-	handler := internal.RestoreCertRotationHandler(app, stateFile)
-	if handler != nil {
-		online := c.Command.Name != "extract"
-		err = handler.ResumeRotation(online)
+	online := c.Command.Name != "extract"
+	stateFile := filepath.Join(app.StorageDir, "root-ca-update.state")
+	if handler := internal.RestoreRootRenewalHandler(app, stateFile); handler != nil {
+		if err = handler.Resume(online); err != nil {
+			return nil, err
+		}
 	}
-	return app, err
+	stateFile = filepath.Join(app.StorageDir, "cert-rotation.state")
+	if handler := internal.RestoreCertRotationHandler(app, stateFile); handler != nil {
+		if err = handler.ResumeRotation(online); err != nil {
+			return nil, err
+		}
+	}
+	return app, nil
 }
 
 func extract(c *cli.Context) error {
@@ -108,6 +121,28 @@ func renewCert(c *cli.Context) error {
 	return err
 }
 
+func renewRoot(c *cli.Context) error {
+	app, err := NewApp(c)
+	if err != nil {
+		return err
+	}
+	if c.NArg() != 1 && c.NArg() != 2 {
+		cli.ShowCommandHelpAndExit(c, "renew-root", 1)
+	}
+	server := c.Args().Get(0)
+	stateFile := filepath.Join(app.StorageDir, "root-ca-update.state")
+	handler := internal.NewRootRenewalHandler(app, stateFile, server)
+	if c.NArg() == 2 {
+		handler.State.CorrelationId = c.Args().Get(1)
+	}
+
+	log.Printf("Performing root certificate update")
+	if err = handler.Update(); err == nil {
+		log.Print("Root certificate update sequence complete")
+	}
+	return err
+}
+
 func main() {
 	app := &cli.App{
 		Name:  "fioconfig",
@@ -131,6 +166,11 @@ func main() {
 				Name:    "unsafe-handlers",
 				Usage:   "Enable running on-changed handlers defined outside of /usr/share/fioconfig/handlers/",
 				EnvVars: []string{"UNSAFE_CALLBACKS"},
+			},
+			&cli.BoolFlag{
+				Name:    "unsafe-ca-renewal",
+				Usage:   "Skip certificate signature validation during root CA renewal",
+				EnvVars: []string{"UNSAFE_CA_RENEWAL"},
 			},
 		},
 		Commands: []*cli.Command{
@@ -182,6 +222,14 @@ func main() {
 						Value: "03,09",
 						Usage: "The two pkcs11 slot IDs to use for client certificates",
 					},
+				},
+			},
+			{
+				Name:     "renew-root",
+				HelpName: "renew-root <EST Server> [<rotation-id>]",
+				Usage:    "Renew device's TLS root CA used with device-gateway",
+				Action: func(c *cli.Context) error {
+					return renewRoot(c)
 				},
 			},
 			{
