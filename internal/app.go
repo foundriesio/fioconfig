@@ -211,7 +211,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		headers["If-Modified-Since"] = ts
 	}
 
-	res, err := httpGet(client, a.configUrl, headers)
+	res, err := transport.HttpGet(client, a.configUrl, headers)
 	if err != nil {
 		return err // Unable to attempt request
 	}

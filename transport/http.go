@@ -1,4 +1,4 @@
-package internal
+package transport
 
 import (
 	"bytes"
@@ -22,6 +22,18 @@ func (res httpRes) Json(data interface{}) error {
 
 func (res httpRes) String() string {
 	return string(res.Body)
+}
+
+func HttpGet(client *http.Client, url string, headers map[string]string) (*httpRes, error) {
+	return httpDo(client, http.MethodGet, url, headers, nil)
+}
+
+func HttpPatch(client *http.Client, url string, data interface{}) (*httpRes, error) {
+	return httpDo(client, http.MethodPatch, url, nil, data)
+}
+
+func HttpPost(client *http.Client, url string, data interface{}) (*httpRes, error) {
+	return httpDo(client, http.MethodPost, url, nil, data)
 }
 
 func readResponse(r *http.Response) (*httpRes, error) {
@@ -79,16 +91,4 @@ func httpDo(client *http.Client, method, url string, headers map[string]string, 
 		}
 	}
 	return res, err
-}
-
-func httpGet(client *http.Client, url string, headers map[string]string) (*httpRes, error) {
-	return httpDo(client, http.MethodGet, url, headers, nil)
-}
-
-func httpPatch(client *http.Client, url string, data interface{}) (*httpRes, error) {
-	return httpDo(client, http.MethodPatch, url, nil, data)
-}
-
-func httpPost(client *http.Client, url string, data interface{}) (*httpRes, error) {
-	return httpDo(client, http.MethodPost, url, nil, data)
 }

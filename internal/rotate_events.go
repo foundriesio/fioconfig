@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/foundriesio/fioconfig/transport"
 	"github.com/google/uuid"
 )
 
@@ -53,7 +54,7 @@ func (s *DgEventSync) Notify(event string, err error) {
 			},
 		},
 	}
-	res, err := httpPost(s.client, s.url, evt)
+	res, err := transport.HttpPost(s.client, s.url, evt)
 	if err != nil {
 		log.Printf("Unable to send event: %s", err)
 	} else if res.StatusCode < 200 || res.StatusCode > 204 {

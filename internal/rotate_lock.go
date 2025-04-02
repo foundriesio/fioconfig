@@ -4,6 +4,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+
+	"github.com/foundriesio/fioconfig/transport"
 )
 
 type lockStep struct{}
@@ -32,7 +34,7 @@ func (s lockStep) Execute(handler *certRotationContext) error {
 	pubBytes = pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes})
 
 	url := handler.app.sota.GetOrDie("tls.server") + "/device"
-	if res, err := httpPatch(handler.client, url, DeviceUpdate{string(pubBytes)}); err != nil {
+	if res, err := transport.HttpPatch(handler.client, url, DeviceUpdate{string(pubBytes)}); err != nil {
 		return err
 	} else if res.StatusCode != 200 {
 		return fmt.Errorf("Unable to set device's next public key: HTTP_%d - %s", res.StatusCode, res.String())

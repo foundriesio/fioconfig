@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/foundriesio/fioconfig/transport"
 )
 
 var Commit string
@@ -96,7 +98,7 @@ func updateConfig(app *App, client *http.Client, pubkey string) error {
 			},
 		},
 	}
-	res, err := httpPatch(client, app.configUrl, ccr)
+	res, err := transport.HttpPatch(client, app.configUrl, ccr)
 	if err != nil {
 		return err
 	}
