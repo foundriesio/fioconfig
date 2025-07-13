@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/foundriesio/fioconfig/sotatoml"
 	"github.com/stretchr/testify/require"
 	"go.mozilla.org/pkcs7"
 )
@@ -275,7 +276,7 @@ func TestRotateFinalize(t *testing.T) {
 		keyvals := map[string]string{
 			"storage.path": tmpdir,
 		}
-		require.Nil(t, app.sota.updateKeys(keyvals))
+		require.Nil(t, app.sota.UpdateKeys(keyvals))
 
 		stateFile := filepath.Join(tmpdir, "rotate.state")
 		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
@@ -285,7 +286,7 @@ func TestRotateFinalize(t *testing.T) {
 		step := finalizeStep{}
 		require.Nil(t, step.Execute(&handler.stateContext))
 
-		sota, err := NewAppConfig([]string{filepath.Join(tmpdir, "sota.toml")})
+		sota, err := sotatoml.NewAppConfig([]string{filepath.Join(tmpdir, "sota.toml")})
 		require.Nil(t, err)
 
 		bytes, err := os.ReadFile(sota.GetOrDie("import.tls_pkey_path"))

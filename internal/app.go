@@ -2,8 +2,6 @@ package internal
 
 import (
 	"bytes"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"log"
@@ -15,6 +13,8 @@ import (
 	"time"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/foundriesio/fioconfig/sotatoml"
+	"github.com/foundriesio/fioconfig/transport"
 )
 
 const onChangedForceExit = 123
@@ -42,133 +42,34 @@ type App struct {
 	configUrl      string
 	configPaths    []string
 	unsafeHandlers bool
-	sota           *AppConfig
+	sota           *sotatoml.AppConfig
 
 	exitFunc func(int)
 }
 
-func tomlAssertVal(cfg *AppConfig, key string, allowed []string) string {
-	val := cfg.GetOrDie(key)
-	for _, v := range allowed {
-		if val == v {
-			return val
-		}
-	}
-	fmt.Println("ERROR: Invalid value", val, "in sota.toml for", key)
-	return val
-}
-
-// sota.toml has slot id's as "01". We need to turn that into []byte{1}
-func idToBytes(id string) []byte {
-	bytes := []byte(id)
-	start := -1
-	for idx, char := range bytes {
-		bytes[idx] = char - byte('0')
-		if bytes[idx] != 0 && start == -1 {
-			start = idx
-		}
-	}
-	//strip off leading 0's
-	return bytes[start:]
-}
-
-func createClientPkcs11(sota *AppConfig) (*http.Client, CryptoHandler) {
-	module := sota.GetOrDie("p11.module")
-	pin := sota.GetOrDie("p11.pass")
-	pkeyId := sota.GetOrDie("p11.tls_pkey_id")
-	certId := sota.GetOrDie("p11.tls_clientcert_id")
-	caFile := sota.GetOrDie("import.tls_cacert_path")
-
-	cfg := crypto11.Config{
-		Path:        module,
-		TokenLabel:  sota.GetDefault("p11.label", "aktualizr"),
-		Pin:         pin,
-		MaxSessions: 2,
-	}
-
-	ctx, err := crypto11.Configure(&cfg)
+func createClient(cfg *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
+	tlsCfg, extra, err := transport.GetTlsConfig(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	privKey, err := ctx.FindKeyPair(idToBytes(pkeyId), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	cert, err := ctx.FindCertificate(idToBytes(certId), nil, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if cert == nil || privKey == nil {
-		log.Fatal("Unable to load pkcs11 client cert and/or private key")
-	}
-
-	caCert, err := os.ReadFile(caFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{
-			{
-				Certificate: [][]byte{cert.Raw},
-				PrivateKey:  privKey,
-			},
-		},
-		RootCAs: caCertPool,
-	}
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
-	return client, NewEciesPkcs11Handler(ctx, privKey)
-}
-
-func createClientLocal(sota *AppConfig) (*http.Client, CryptoHandler) {
-	certFile := sota.GetOrDie("import.tls_clientcert_path")
-	keyFile := sota.GetOrDie("import.tls_pkey_path")
-	caFile := sota.GetOrDie("import.tls_cacert_path")
-
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	caCert, err := os.ReadFile(caFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caCertPool,
-	}
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	transport := &http.Transport{TLSClientConfig: tlsCfg}
 	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
 
-	if handler := NewEciesLocalHandler(cert.PrivateKey); handler != nil {
-		return client, handler
+	if "file" == cfg.Get("tls.pkey_source") {
+		if handler := NewEciesLocalHandler(tlsCfg.Certificates[0].PrivateKey); handler != nil {
+			return client, handler
+		}
+		log.Fatal("unsupported private key")
 	}
-	panic("Unsupported private key")
-}
-
-func createClient(sota *AppConfig) (*http.Client, CryptoHandler) {
-	_ = tomlAssertVal(sota, "tls.ca_source", []string{"file"})
-	source := tomlAssertVal(sota, "tls.pkey_source", []string{"file", "pkcs11"})
-	_ = tomlAssertVal(sota, "tls.cert_source", []string{source})
-	if source == "file" {
-		return createClientLocal(sota)
-	}
-	return createClientPkcs11(sota)
+	ctx := extra.(*crypto11.Context)
+	return client, NewEciesPkcs11Handler(ctx, tlsCfg.Certificates[0].PrivateKey)
 }
 
 func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {
 	if len(configPaths) == 0 {
-		configPaths = DEF_CONFIG_ORDER
+		configPaths = sotatoml.DEF_CONFIG_ORDER
 	}
-	sota, err := NewAppConfig(configPaths)
+	sota, err := sotatoml.NewAppConfig(configPaths)
 	if err != nil {
 		fmt.Println("ERROR - unable to decode sota.toml:", err)
 		os.Exit(1)
@@ -205,30 +106,7 @@ func updateSecret(secretFile string, newContent []byte) (bool, error) {
 	if err == nil && bytes.Equal(newContent, curContent) {
 		return false, nil
 	}
-	return true, safeWrite(secretFile, newContent)
-}
-
-// Do an atomic write to the file which prevents race conditions for a reader.
-// Don't worry about writer synchronization as there is only one writer to these files.
-func safeWrite(name string, data []byte) error {
-	tmpfile := name + ".tmp"
-	f, err := os.OpenFile(tmpfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
-	if err != nil {
-		return fmt.Errorf("Unable to create %s: %w", name, err)
-	}
-	defer os.Remove(tmpfile)
-	_, err = f.Write(data)
-	if err1 := f.Sync(); err1 != nil && err == nil {
-		err = err1
-	}
-	if err1 := f.Close(); err1 != nil && err == nil {
-		err = err1
-	}
-
-	if err != nil {
-		return fmt.Errorf("Unable to create %s: %w", name, err)
-	}
-	return os.Rename(tmpfile, name)
+	return true, sotatoml.SafeWrite(secretFile, newContent)
 }
 
 func (a *App) extract(config configSnapshot) error {
@@ -333,7 +211,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		headers["If-Modified-Since"] = ts
 	}
 
-	res, err := httpGet(client, a.configUrl, headers)
+	res, err := transport.HttpGet(client, a.configUrl, headers)
 	if err != nil {
 		return err // Unable to attempt request
 	}
@@ -346,7 +224,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		if err = a.extract(config); err != nil {
 			return err
 		}
-		if err = safeWrite(a.EncryptedConfig, res.Body); err != nil {
+		if err = sotatoml.SafeWrite(a.EncryptedConfig, res.Body); err != nil {
 			return err
 		}
 

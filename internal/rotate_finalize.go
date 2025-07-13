@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/foundriesio/fioconfig/sotatoml"
 )
 
 type finalizeStep struct{}
@@ -42,13 +44,13 @@ func (s finalizeStep) Execute(handler *certRotationContext) error {
 			keyvals[pair[1]] = f.Name()
 		}
 	}
-	if err := handler.app.sota.updateKeys(keyvals); err != nil {
+	if err := handler.app.sota.UpdateKeys(keyvals); err != nil {
 		return err
 	}
 
 	if len(handler.State.FullConfigEncrypted) > 0 {
 		path := filepath.Join(storagePath, "config.encrypted")
-		if err := safeWrite(path, []byte(handler.State.FullConfigEncrypted)); err != nil {
+		if err := sotatoml.SafeWrite(path, []byte(handler.State.FullConfigEncrypted)); err != nil {
 			return fmt.Errorf("Error updating config.encrypted: %w", err)
 		}
 	}

@@ -10,6 +10,8 @@ import (
 	"os"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/foundriesio/fioconfig/sotatoml"
+	"github.com/foundriesio/fioconfig/transport"
 )
 
 type fullCfgStep struct{}
@@ -65,7 +67,7 @@ func (s deviceCfgStep) Execute(handler *certRotationContext) error {
 
 	// Download/decrypt current device config with current key
 	url := handler.app.configUrl + "-device"
-	res, err := httpGet(handler.client, url, nil)
+	res, err := transport.HttpGet(handler.client, url, nil)
 	if err != nil {
 		return err
 	}
@@ -109,7 +111,7 @@ func (s deviceCfgStep) Execute(handler *certRotationContext) error {
 			OnChanged:   entry.OnChanged,
 		})
 	}
-	res, err = httpPatch(handler.client, handler.app.configUrl, ccr)
+	res, err = transport.HttpPatch(handler.client, handler.app.configUrl, ccr)
 	if err != nil {
 		return err
 	}
@@ -162,7 +164,7 @@ func getCryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
 		return nil, fmt.Errorf("Unable to configure crypto11 library: %w", err)
 	}
 
-	privKey, err := ctx.FindKeyPair(idToBytes(h.State.NewKey), nil)
+	privKey, err := ctx.FindKeyPair(sotatoml.IdToBytes(h.State.NewKey), nil)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to find new HSM private key: %w", err)
 	}

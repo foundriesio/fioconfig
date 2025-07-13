@@ -1,4 +1,4 @@
-package internal
+package transport
 
 import (
 	"bytes"
@@ -10,23 +10,35 @@ import (
 	"time"
 )
 
-type httpRes struct {
+type HttpRes struct {
 	StatusCode int
 	Body       []byte
 	Header     http.Header
 }
 
-func (res httpRes) Json(data interface{}) error {
+func (res HttpRes) Json(data interface{}) error {
 	return json.Unmarshal(res.Body, data)
 }
 
-func (res httpRes) String() string {
+func (res HttpRes) String() string {
 	return string(res.Body)
 }
 
-func readResponse(r *http.Response) (*httpRes, error) {
+func HttpGet(client *http.Client, url string, headers map[string]string) (*HttpRes, error) {
+	return httpDo(client, http.MethodGet, url, headers, nil)
+}
+
+func HttpPatch(client *http.Client, url string, data interface{}) (*HttpRes, error) {
+	return httpDo(client, http.MethodPatch, url, nil, data)
+}
+
+func HttpPost(client *http.Client, url string, data interface{}) (*HttpRes, error) {
+	return httpDo(client, http.MethodPost, url, nil, data)
+}
+
+func readResponse(r *http.Response) (*HttpRes, error) {
 	defer r.Body.Close()
-	res := &httpRes{
+	res := &HttpRes{
 		StatusCode: r.StatusCode,
 		Header:     r.Header,
 	}
@@ -38,7 +50,7 @@ func readResponse(r *http.Response) (*httpRes, error) {
 	return res, nil
 }
 
-func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data interface{}) (*httpRes, error) {
+func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
 	var dataBytes []byte
 	if data != nil {
 		var err error
@@ -65,9 +77,9 @@ func httpDoOnce(client *http.Client, method, url string, headers map[string]stri
 	return readResponse(res)
 }
 
-func httpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*httpRes, error) {
+func httpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
 	var err error
-	var res *httpRes
+	var res *HttpRes
 	for _, delay := range []int{0, 1, 2, 5, 13, 30} {
 		if delay != 0 {
 			log.Printf("HTTP %s to %s failed, trying again in %d seconds", url, method, delay)
@@ -79,16 +91,4 @@ func httpDo(client *http.Client, method, url string, headers map[string]string, 
 		}
 	}
 	return res, err
-}
-
-func httpGet(client *http.Client, url string, headers map[string]string) (*httpRes, error) {
-	return httpDo(client, http.MethodGet, url, headers, nil)
-}
-
-func httpPatch(client *http.Client, url string, data interface{}) (*httpRes, error) {
-	return httpDo(client, http.MethodPatch, url, nil, data)
-}
-
-func httpPost(client *http.Client, url string, data interface{}) (*httpRes, error) {
-	return httpDo(client, http.MethodPost, url, nil, data)
 }
