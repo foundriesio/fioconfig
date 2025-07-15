@@ -25,15 +25,15 @@ func (res HttpRes) String() string {
 }
 
 func HttpGet(client *http.Client, url string, headers map[string]string) (*HttpRes, error) {
-	return httpDo(client, http.MethodGet, url, headers, nil)
+	return HttpDo(client, http.MethodGet, url, headers, nil)
 }
 
 func HttpPatch(client *http.Client, url string, data interface{}) (*HttpRes, error) {
-	return httpDo(client, http.MethodPatch, url, nil, data)
+	return HttpDo(client, http.MethodPatch, url, nil, data)
 }
 
 func HttpPost(client *http.Client, url string, data interface{}) (*HttpRes, error) {
-	return httpDo(client, http.MethodPost, url, nil, data)
+	return HttpDo(client, http.MethodPost, url, nil, data)
 }
 
 func readResponse(r *http.Response) (*HttpRes, error) {
@@ -77,7 +77,7 @@ func httpDoOnce(client *http.Client, method, url string, headers map[string]stri
 	return readResponse(res)
 }
 
-func httpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
+func HttpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
 	var err error
 	var res *HttpRes
 	for _, delay := range []int{0, 1, 2, 5, 13, 30} {
