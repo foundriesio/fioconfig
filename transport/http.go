@@ -16,7 +16,7 @@ type HttpRes struct {
 	Header     http.Header
 }
 
-func (res HttpRes) Json(data interface{}) error {
+func (res HttpRes) Json(data any) error {
 	return json.Unmarshal(res.Body, data)
 }
 
@@ -28,11 +28,11 @@ func HttpGet(client *http.Client, url string, headers map[string]string) (*HttpR
 	return HttpDo(client, http.MethodGet, url, headers, nil)
 }
 
-func HttpPatch(client *http.Client, url string, data interface{}) (*HttpRes, error) {
+func HttpPatch(client *http.Client, url string, data any) (*HttpRes, error) {
 	return HttpDo(client, http.MethodPatch, url, nil, data)
 }
 
-func HttpPost(client *http.Client, url string, data interface{}) (*HttpRes, error) {
+func HttpPost(client *http.Client, url string, data any) (*HttpRes, error) {
 	return HttpDo(client, http.MethodPost, url, nil, data)
 }
 
@@ -50,7 +50,7 @@ func readResponse(r *http.Response) (*HttpRes, error) {
 	return res, nil
 }
 
-func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
+func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data any) (*HttpRes, error) {
 	var dataBytes []byte
 	if data != nil {
 		var ok bool
@@ -87,7 +87,7 @@ func httpDoOnce(client *http.Client, method, url string, headers map[string]stri
 // - nil: No body will be sent
 // - []byte: The body will be sent as is
 // - a struct to be marshaled as JSON
-func HttpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
+func HttpDo(client *http.Client, method, url string, headers map[string]string, data any) (*HttpRes, error) {
 	var err error
 	var res *HttpRes
 	for _, delay := range []int{0, 1, 2, 5, 13, 30} {
