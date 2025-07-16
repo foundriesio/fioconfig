@@ -1,0 +1,4 @@
+#!/bin/sh -ex
+
+/usr/sbin/fio-diag.sh
+dmesg > $ARTIFACTS/dmesg.log
