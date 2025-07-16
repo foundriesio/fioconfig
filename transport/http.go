@@ -53,10 +53,15 @@ func readResponse(r *http.Response) (*HttpRes, error) {
 func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
 	var dataBytes []byte
 	if data != nil {
-		var err error
-		dataBytes, err = json.Marshal(data)
-		if err != nil {
-			return nil, err
+		var ok bool
+		dataBytes, ok = data.([]byte)
+		if !ok {
+			// If data is not a byte array - assuming we should marshal as JSON
+			var err error
+			dataBytes, err = json.Marshal(data)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(dataBytes))
@@ -77,6 +82,11 @@ func httpDoOnce(client *http.Client, method, url string, headers map[string]stri
 	return readResponse(res)
 }
 
+// HttpDo performs an HTTP request with retries for transient errors. The `data`
+// parameter can be:
+// - nil: No body will be sent
+// - []byte: The body will be sent as is
+// - a struct to be marshaled as JSON
 func HttpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
 	var err error
 	var res *HttpRes
