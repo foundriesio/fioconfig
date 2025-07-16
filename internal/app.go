@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/foundriesio/fioconfig/fiotest"
 	"github.com/foundriesio/fioconfig/sotatoml"
 	"github.com/foundriesio/fioconfig/transport"
 )
@@ -252,6 +253,25 @@ func (a *App) CheckIn() error {
 	defer crypto.Close()
 	a.callInitFunctions(client, crypto)
 	return a.checkin(client, crypto)
+}
+
+func (a *App) RunAndReport(name, testId, artifactsDir string, args []string) error {
+	client, crypto := createClient(a.sota)
+	defer crypto.Close()
+
+	url := a.sota.GetDefault("tls.server", "https://ota-lite.foundries.io:8443")
+	url += "/tests"
+	api := fiotest.NewApi(client, url)
+
+	test, err := api.Create(name, testId)
+	if err != nil {
+		return fmt.Errorf("Unable to create test record: %w", err)
+	}
+	tr := fiotest.ExecCommand(args, artifactsDir)
+	if err := test.Complete(tr); err != nil {
+		return fmt.Errorf("Unable to complete test record: %w", err)
+	}
+	return nil
 }
 
 func (a *App) CallInitFunctions() {
