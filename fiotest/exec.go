@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -30,8 +31,12 @@ type Result struct {
 }
 
 // ExecCommand will run the given command and wrap the results in a structure
-// that aligns with what the device-gateway's fiotest API will expect.
-func ExecCommand(args []string) Result {
+// that aligns with what the device-gateway's fiotest API will expect. If
+// `artifactsDir` is set the command will be run with an environment variable
+// `ARTIFACTS` set to that directory. The command can then save files in
+// variable where test artifacts can be saved by the command and included
+// in the test result.
+func ExecCommand(args []string, artifactsDir string) Result {
 	r := Result{
 		Status:  "PASSED",
 		Details: strings.Join(args, " "),
@@ -39,6 +44,9 @@ func ExecCommand(args []string) Result {
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = os.Environ()
+	if len(artifactsDir) > 0 {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("ARTIFACTS=%s", artifactsDir))
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		r.Status = "FAILED"
@@ -47,6 +55,20 @@ func ExecCommand(args []string) Result {
 		} else {
 			errBytes := fmt.Appendf(nil, "\n----\nUnable to run command: %s", err)
 			output = append(output, errBytes...)
+		}
+	}
+
+	if len(artifactsDir) > 0 {
+		entries, err := os.ReadDir(artifactsDir)
+		if err != nil {
+			errBytes := fmt.Appendf(nil, "\n\nERROR: unable to find test artifacts: %s", err)
+			output = append(output, errBytes...)
+		} else {
+			for _, entry := range entries {
+				if entry.Type().IsRegular() {
+					r.Artifacts = append(r.Artifacts, &fileOutput{path: artifactsDir, name: entry.Name()})
+				}
+			}
 		}
 	}
 	r.Artifacts = append(r.Artifacts, &consoleOutput{output})
@@ -63,4 +85,21 @@ func (consoleOutput) Name() string {
 
 func (c consoleOutput) Content() []byte {
 	return c.output
+}
+
+type fileOutput struct {
+	path string
+	name string
+}
+
+func (f fileOutput) Name() string {
+	return f.name
+}
+
+func (f fileOutput) Content() []byte {
+	buf, err := os.ReadFile(filepath.Join(f.path, f.name))
+	if err != nil {
+		buf = fmt.Appendf(nil, "\n\nERROR: unable to read trigger artifact: %s: %s", f.name, err)
+	}
+	return buf
 }
