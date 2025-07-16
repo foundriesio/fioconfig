@@ -1,0 +1,63 @@
+#!/bin/sh -e
+
+# This is an OnChanged handler that can handle requests to run a command
+# one time, capture the output, and report it back to the device-gateway.
+
+[ -z "${CONFIG_FILE}" ] && (echo "No CONFIG_FILE specified"; exit 1)
+[ -f "${CONFIG_FILE}" ] || (echo "${CONFIG_FILE} does not exist. Assuming config file was deleted"; exit 0)
+
+ACTIONS_DIR=${ACTIONS_DIR-"/usr/share/fioconfig/actions"}
+[ -d "${ACTIONS_DIR}" ] || (echo "${ACTIONS_DIR} does not exist"; exit 1)
+
+cmd_id=$(cat ${CONFIG_FILE} | grep COMMAND_ID | cut -d= -f2)
+[ -z "${cmd_id}" ] && (echo "No COMMAND_ID found in config file"; exit 1)
+echo "Command ID is ${cmd_id}"
+
+capture=$(cat ${CONFIG_FILE} | grep COMMAND_CAPTURE | cut -d= -f2)
+
+action=$1
+active_file="${STORAGE_DIR}/oneshot.${action}.state"
+completed_file="${active_file}.completed"
+
+echo "Action is ${action}"
+cmd="${ACTIONS_DIR}/${action}"
+if [ -x "${cmd}" ] ; then
+	if [ "${capture}" = "1" ]; then
+		artifacts_dir=$(mktemp -d fioconfig-oneshot.XXXXXX)
+		trap 'rm -rf ${artifacts_dir}' EXIT
+
+		echo "Capturing stdout/stderr"
+		cmd="${FIOCONFIG_BIN} run-and-report --artifacts-dir ${artifacts_dir} --id ${cmd_id} --name ${action} ${cmd}"
+	fi
+else
+	echo "Action not found in ${ACTIONS_DIR} or is not executable"
+	echo -n "${cmd_id}" > ${completed_file}
+	if [ "${capture}" = "1" ]; then
+		# report something back to the operator
+		${FIOCONFIG_BIN} run-and-report --id ${cmd_id} --name ${action} /bin/sh -c "echo Action(${cmd}) not found;  exit 1"
+	fi
+	exit 1
+fi
+
+# We'll execute under two conditions:
+# 1) We've never been run  (oneshot.state.completed does not exist)
+# 3) We have a new command ($cmd_id != oneshot.state.completed's COMMANDID)
+
+runcmd() {
+	${cmd} ; echo -n "${cmd_id}" > ${completed_file}
+	rm -rf ${artifacts_dir}
+	exit
+}
+
+if [ ! -f "${completed_file}" ] ; then
+	echo "Completion file, ${completed_file}, does not exist"
+	runcmd
+fi
+
+completed_id=$(cat ${completed_file})
+if [ "${completed_id}" !=  "${cmd_id}" ] ; then
+	echo "Running command: COMMAND_ID has changed from ${completed_id} -> ${cmd_id}"
+	runcmd
+fi
+
+echo "Command not needed. Current COMMAND_ID is ${cmd_id}"
