@@ -16,7 +16,7 @@ type HttpRes struct {
 	Header     http.Header
 }
 
-func (res HttpRes) Json(data interface{}) error {
+func (res HttpRes) Json(data any) error {
 	return json.Unmarshal(res.Body, data)
 }
 
@@ -25,15 +25,15 @@ func (res HttpRes) String() string {
 }
 
 func HttpGet(client *http.Client, url string, headers map[string]string) (*HttpRes, error) {
-	return httpDo(client, http.MethodGet, url, headers, nil)
+	return HttpDo(client, http.MethodGet, url, headers, nil)
 }
 
-func HttpPatch(client *http.Client, url string, data interface{}) (*HttpRes, error) {
-	return httpDo(client, http.MethodPatch, url, nil, data)
+func HttpPatch(client *http.Client, url string, data any) (*HttpRes, error) {
+	return HttpDo(client, http.MethodPatch, url, nil, data)
 }
 
-func HttpPost(client *http.Client, url string, data interface{}) (*HttpRes, error) {
-	return httpDo(client, http.MethodPost, url, nil, data)
+func HttpPost(client *http.Client, url string, data any) (*HttpRes, error) {
+	return HttpDo(client, http.MethodPost, url, nil, data)
 }
 
 func readResponse(r *http.Response) (*HttpRes, error) {
@@ -50,13 +50,18 @@ func readResponse(r *http.Response) (*HttpRes, error) {
 	return res, nil
 }
 
-func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
+func httpDoOnce(client *http.Client, method, url string, headers map[string]string, data any) (*HttpRes, error) {
 	var dataBytes []byte
 	if data != nil {
-		var err error
-		dataBytes, err = json.Marshal(data)
-		if err != nil {
-			return nil, err
+		var ok bool
+		dataBytes, ok = data.([]byte)
+		if !ok {
+			// If data is not a byte array - assuming we should marshal as JSON
+			var err error
+			dataBytes, err = json.Marshal(data)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(dataBytes))
@@ -77,7 +82,12 @@ func httpDoOnce(client *http.Client, method, url string, headers map[string]stri
 	return readResponse(res)
 }
 
-func httpDo(client *http.Client, method, url string, headers map[string]string, data interface{}) (*HttpRes, error) {
+// HttpDo performs an HTTP request with retries for transient errors. The `data`
+// parameter can be:
+// - nil: No body will be sent
+// - []byte: The body will be sent as is
+// - a struct to be marshaled as JSON
+func HttpDo(client *http.Client, method, url string, headers map[string]string, data any) (*HttpRes, error) {
 	var err error
 	var res *HttpRes
 	for _, delay := range []int{0, 1, 2, 5, 13, 30} {
