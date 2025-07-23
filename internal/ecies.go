@@ -3,12 +3,16 @@ package internal
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 
 	"github.com/ThalesIgnite/crypto11"
 	ecies "github.com/foundriesio/go-ecies"
+	"github.com/miekg/pkcs11"
 )
 
 type EciesCrypto struct {
@@ -41,6 +45,41 @@ func (ec *EciesCrypto) Encrypt(value string) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(enc), nil
+}
+
+func (ec *EciesCrypto) UsePkcs11() bool {
+	return ec.ctx != nil
+}
+
+func (ec *EciesCrypto) DeleteKeyPair(id []byte, label []byte) error {
+	return ec.ctx.DeleteKeyPair(id, label)
+}
+
+func (ec *EciesCrypto) DeleteCertificate(id []byte, label []byte, serial *big.Int) error {
+	return ec.ctx.DeleteCertificate(id, label, serial)
+}
+
+func (ec *EciesCrypto) ImportCertificateWithLabel(id []byte, label []byte, certificate *x509.Certificate) error {
+	return ec.ctx.ImportCertificateWithLabel(id, label, certificate)
+}
+
+func (ec *EciesCrypto) GenerateKeyPair(id []byte, label []byte) (crypto.Signer, error) {
+	if err := ec.ctx.DeleteKeyPair(id, label); err != nil {
+		return nil, fmt.Errorf("Unable to free up slot(%s) for new keypair: %w", id, err)
+	}
+	pubAttr, err := crypto11.NewAttributeSetWithIDAndLabel(id, []byte("tls"))
+	if err != nil {
+		return nil, fmt.Errorf("Unable to define pkcs11 attributes for new key: %w", err)
+	}
+	// The default ecdsa logic in crypto11 does not include the ability to
+	// derive which is required for ECIES decryption
+	pubAttr.AddIfNotPresent([]*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_DERIVE, true)})
+	privAttr := pubAttr.Copy()
+	signer, err := ec.ctx.GenerateECDSAKeyPairWithAttributes(pubAttr, privAttr, elliptic.P256())
+	if err != nil {
+		return nil, fmt.Errorf("Unable to generate new keypair in HSM: %w", err)
+	}
+	return signer, nil
 }
 
 func (ec *EciesCrypto) Close() {
