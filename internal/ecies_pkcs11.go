@@ -1,3 +1,5 @@
+//go:build !disable_pkcs11
+
 package internal
 
 import (
