@@ -13,6 +13,7 @@ import (
 	"math/big"
 
 	"github.com/ThalesIgnite/crypto11"
+	"github.com/foundriesio/fioconfig/sotatoml"
 	ecies "github.com/foundriesio/go-ecies"
 	"github.com/miekg/pkcs11"
 )
@@ -90,8 +91,31 @@ func (ec *EciesCrypto) Close() {
 	}
 }
 
-func NewEciesPkcs11Handler(ctx *crypto11.Context, privKey crypto.PrivateKey) CryptoHandler {
-	return &EciesCrypto{ImportPcks11(ctx, privKey), ctx}
+func NewEciesPkcs11Handler(ctx interface{}, privKey crypto.PrivateKey) CryptoHandler {
+	return &EciesCrypto{ImportPcks11(ctx.(*crypto11.Context), privKey), ctx.(*crypto11.Context)}
+}
+
+func getPkcs11CryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
+	module := h.app.sota.GetOrDie("p11.module")
+	pin := h.app.sota.GetOrDie("p11.pass")
+
+	cfg := crypto11.Config{
+		Path:        module,
+		TokenLabel:  h.app.sota.GetDefault("p11.label", "aktualizr"),
+		Pin:         pin,
+		MaxSessions: 2,
+	}
+
+	ctx, err := crypto11.Configure(&cfg)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to configure crypto11 library: %w", err)
+	}
+
+	privKey, err := ctx.FindKeyPair(sotatoml.IdToBytes(h.State.NewKey), nil)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to find new HSM private key: %w", err)
+	}
+	return NewEciesPkcs11Handler(ctx, privKey).(*EciesCrypto), nil
 }
 
 type PrivateKeyPkcs11 struct {

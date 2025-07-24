@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ThalesIgnite/crypto11"
 	"github.com/foundriesio/fioconfig/fiotest"
 	"github.com/foundriesio/fioconfig/sotatoml"
 	"github.com/foundriesio/fioconfig/transport"
@@ -62,8 +61,7 @@ func createClient(cfg *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
 		}
 		log.Fatal("unsupported private key")
 	}
-	ctx := extra.(*crypto11.Context)
-	return client, NewEciesPkcs11Handler(ctx, tlsCfg.Certificates[0].PrivateKey)
+	return client, NewEciesPkcs11Handler(extra, tlsCfg.Certificates[0].PrivateKey)
 }
 
 func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {

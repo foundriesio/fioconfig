@@ -76,3 +76,8 @@ func NewEciesPkcs11Handler(ctx any, privKey crypto.PrivateKey) CryptoHandler {
 	log.Fatal("NewEciesPkcs11Handler should not be called in disable_pkcs11 build")
 	return nil
 }
+
+func getPkcs11CryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
+	log.Fatal("getPkcs11CryptoHandler should not be called in disable_pkcs11 build")
+	return nil, nil
+}
