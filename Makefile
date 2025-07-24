@@ -3,7 +3,7 @@ COMMIT:=$(shell git log -1 --pretty=format:%h)$(shell git diff --quiet || echo '
 # Use linker flags to provide commit info
 LDFLAGS=-ldflags "-X=github.com/foundriesio/fioconfig/internal.Commit=$(COMMIT)"
 
-TARGETS=bin/fioconfig-linux-amd64 bin/fioconfig-linux-armv7 bin/fioconfig-linux-arm
+TARGETS=bin/fioconfig-linux-amd64 bin/fioconfig-linux-armv7 bin/fioconfig-linux-arm bin/fioconfig-nopkcs11
 
 linter:=$(shell which golangci-lint 2>/dev/null || echo $(HOME)/go/bin/golangci-lint)
 
@@ -17,6 +17,10 @@ bin/fioconfig-%: FORCE
 	GOOS=$(shell echo $* | cut -f1 -d\- ) \
 	GOARCH=$(shell echo $* | cut -f2 -d\-) \
 		go build -tags vpn $(LDFLAGS) -o $@ main.go
+
+bin/fioconfig-nopkcs11:
+		CGO_ENABLED=0 go build -tags vpn,disable_pkcs11 $(LDFLAGS) -o $@ main.go
+
 
 FORCE:
 

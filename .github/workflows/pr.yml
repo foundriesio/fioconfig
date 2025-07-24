@@ -30,3 +30,6 @@ jobs:
         uses: actions/checkout@v4
       - name: unit-tests
         run: go test -v ./...
+      - name: nopkcs11
+        run: |
+          make bin/fioconfig-nopkcs11
