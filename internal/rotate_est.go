@@ -17,9 +17,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/ThalesIgnite/crypto11"
 	"github.com/foundriesio/fioconfig/sotatoml"
-	"github.com/miekg/pkcs11"
 	"go.mozilla.org/pkcs7"
 )
 
@@ -51,20 +49,9 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	// Generate a new private key
 	if handler.usePkcs11() {
 		newKey = s.nextPkeyId(handler)
-		if err = handler.crypto.ctx.DeleteKeyPair(sotatoml.IdToBytes(newKey), []byte("tls")); err != nil {
-			return fmt.Errorf("Unable to free up slot(%s) for new keypair: %w", newKey, err)
-		}
-		pubAttr, err := crypto11.NewAttributeSetWithIDAndLabel(sotatoml.IdToBytes(newKey), []byte("tls"))
+		signer, err = handler.crypto.GenerateKeyPair(sotatoml.IdToBytes(newKey), []byte("tls"))
 		if err != nil {
-			return fmt.Errorf("Unable to define pkcs11 attributes for new key: %w", err)
-		}
-		// The default ecdsa logic in crypto11 does not include the ability to
-		// derive which is required for ECIES decryption
-		pubAttr.AddIfNotPresent([]*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_DERIVE, true)})
-		privAttr := pubAttr.Copy()
-		signer, err = handler.crypto.ctx.GenerateECDSAKeyPairWithAttributes(pubAttr, privAttr, elliptic.P256())
-		if err != nil {
-			return fmt.Errorf("Unable to generate new keypair in HSM: %w", err)
+			return err
 		}
 	} else {
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -115,10 +102,10 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	// Update our state
 	if handler.usePkcs11() {
 		newCert := s.nextCertId(handler)
-		if err = handler.crypto.ctx.DeleteCertificate(sotatoml.IdToBytes(newCert), nil, nil); err != nil {
+		if err = handler.crypto.DeleteCertificate(sotatoml.IdToBytes(newCert), nil, nil); err != nil {
 			return fmt.Errorf("Unable to free up slot(%s) for new cert: %w", newCert, err)
 		}
-		if err = handler.crypto.ctx.ImportCertificateWithLabel(sotatoml.IdToBytes(newCert), []byte("client"), estCert); err != nil {
+		if err = handler.crypto.ImportCertificateWithLabel(sotatoml.IdToBytes(newCert), []byte("client"), estCert); err != nil {
 			return fmt.Errorf("Unable to import new cert into HSM: %w", err)
 		}
 		handler.State.NewCert = newCert

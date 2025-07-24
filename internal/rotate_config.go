@@ -9,8 +9,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/ThalesIgnite/crypto11"
-	"github.com/foundriesio/fioconfig/sotatoml"
 	"github.com/foundriesio/fioconfig/transport"
 )
 
@@ -148,25 +146,5 @@ func getCryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
 		}
 		return NewEciesLocalHandler(key).(*EciesCrypto), nil
 	}
-
-	module := h.app.sota.GetOrDie("p11.module")
-	pin := h.app.sota.GetOrDie("p11.pass")
-
-	cfg := crypto11.Config{
-		Path:        module,
-		TokenLabel:  h.app.sota.GetDefault("p11.label", "aktualizr"),
-		Pin:         pin,
-		MaxSessions: 2,
-	}
-
-	ctx, err := crypto11.Configure(&cfg)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to configure crypto11 library: %w", err)
-	}
-
-	privKey, err := ctx.FindKeyPair(sotatoml.IdToBytes(h.State.NewKey), nil)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to find new HSM private key: %w", err)
-	}
-	return NewEciesPkcs11Handler(ctx, privKey).(*EciesCrypto), nil
+	return getPkcs11CryptoHandler(h)
 }

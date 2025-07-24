@@ -90,7 +90,7 @@ func newStateContext[T state](app *App, stateFile string, state T) stateContext[
 
 // usePkcs11 detects if the handler should work with local files or PKCS11
 func (h stateContext[T]) usePkcs11() bool {
-	return h.crypto.ctx != nil
+	return h.crypto.UsePkcs11()
 }
 
 func (h *stateContext[T]) Save() error {
