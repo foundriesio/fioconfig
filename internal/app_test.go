@@ -18,6 +18,7 @@ import (
 
 	"testing"
 
+	"github.com/foundriesio/fioconfig/fiotest"
 	ecies "github.com/foundriesio/go-ecies"
 	"github.com/stretchr/testify/require"
 )
@@ -421,4 +422,57 @@ func TestInitFunctions(t *testing.T) {
 	if len(initFunctions) != 0 {
 		t.Fatal("initFunctions not cleared")
 	}
+}
+
+func TestFiotest(t *testing.T) {
+	var appRef *App
+	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/" {
+			w.WriteHeader(201)
+			w.Header().Set("Content-Type", "text/plain")
+			_, err := w.Write([]byte("test-id"))
+			require.Nil(t, err)
+		} else if r.Method == http.MethodPut && r.URL.Path == "/test-id" {
+			type resultResp struct {
+				Url         string `json:"url"`
+				ContentType string `json:"content-type"`
+			}
+			url := appRef.sota.GetDefault("tls.server", "")
+			url += "/test-id/console.log"
+
+			rr := map[string]resultResp{
+				"console.log": {
+					Url:         url,
+					ContentType: "text/plain",
+				},
+			}
+
+			w.WriteHeader(200)
+			w.Header().Set("Content-Type", "application/json")
+			content, err := json.Marshal(rr)
+			require.Nil(t, err)
+			_, err = w.Write(content)
+			require.Nil(t, err)
+		} else if r.Method == http.MethodPut && r.URL.Path == "/test-id/console.log" {
+			_, err := w.Write([]byte("OK"))
+			require.Nil(t, err)
+		} else {
+			t.Log("testwrapp - bad request:", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+
+	testWrapper(t, doGet, func(app *App, client *http.Client, tempdir string) {
+		appRef = app
+		_, crypto := createClient(app.sota)
+		defer crypto.Close()
+
+		url := app.sota.GetDefault("tls.server", "")
+		api := fiotest.NewApi(client, url)
+
+		test, err := api.Create("NAME", "test-id")
+		require.Nil(t, err)
+		tr := fiotest.ExecCommand([]string{"/bin/true"}, "")
+		require.Nil(t, test.Complete(tr))
+	})
 }

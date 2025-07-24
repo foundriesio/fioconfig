@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -109,6 +110,34 @@ func renewCert(c *cli.Context) error {
 	return err
 }
 
+func runAndReport(c *cli.Context) error {
+	testId := c.String("id")
+	testName := c.String("name")
+
+	if len(testId) > 0 {
+		pattern := `^[a-z0-9\-\_]{20,48}$`
+		if !regexp.MustCompile(pattern).MatchString(testId) {
+			return fmt.Errorf("Invalid test ID: %s, must match pattern %s", testId, pattern)
+		}
+	}
+	pattern := `^[a-z0-9\-\_]{4,16}$`
+	if !regexp.MustCompile(pattern).MatchString(testName) {
+		return fmt.Errorf("Invalid test ID: %s, must match pattern %s", testName, pattern)
+	}
+
+	app, err := NewApp(c)
+	if err != nil {
+		return err
+	}
+	if c.NArg() == 0 {
+		cli.ShowCommandHelpAndExit(c, "run-and-report", 1)
+	}
+
+	args := c.Args().Slice()
+	log.Printf("Running %s", args)
+	return app.RunAndReport(testName, testId, c.String("artifacts-dir"), args)
+}
+
 func main() {
 	app := &cli.App{
 		Name:  "fioconfig",
@@ -182,6 +211,29 @@ func main() {
 						Name:  "pkcs11-cert-ids",
 						Value: "03,09",
 						Usage: "The two pkcs11 slot IDs to use for client certificates",
+					},
+				},
+			},
+			{
+				Name:     "run-and-report",
+				HelpName: "run-and-report <command...>",
+				Usage:    "Run a command and report the output to the device-gateway",
+				Action: func(c *cli.Context) error {
+					return runAndReport(c)
+				},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "name",
+						Required: true,
+						Usage:    "A short name for the test",
+					},
+					&cli.StringFlag{
+						Name:  "id",
+						Usage: "UUID for the test",
+					},
+					&cli.StringFlag{
+						Name:  "artifacts-dir",
+						Usage: "Include files in this directory as artifacts in the test result",
 					},
 				},
 			},
