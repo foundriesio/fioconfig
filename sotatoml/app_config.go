@@ -65,7 +65,7 @@ func NewAppConfig(configPaths []string) (*AppConfig, error) {
 	for _, cfg := range keys {
 		cfg.tree, err = toml.LoadFile(cfg.path)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to load %s; err: %w", cfg.path, err)
 		}
 	}
 
