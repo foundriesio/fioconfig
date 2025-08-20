@@ -115,7 +115,7 @@ func runAndReport(c *cli.Context) error {
 	testName := c.String("name")
 
 	if len(testId) > 0 {
-		pattern := `^[a-z0-9\-\_]{20,48}$`
+		pattern := `^[A-Za-z0-9\-\_]{15,48}$`
 		if !regexp.MustCompile(pattern).MatchString(testId) {
 			return fmt.Errorf("Invalid test ID: %s, must match pattern %s", testId, pattern)
 		}
