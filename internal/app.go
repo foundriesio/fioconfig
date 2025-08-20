@@ -250,6 +250,7 @@ func (a *App) CheckIn() error {
 	client, crypto := createClient(a.sota)
 	defer crypto.Close()
 	a.callInitFunctions(client, crypto)
+	callInitFunctions(a, client)
 	return a.checkin(client, crypto)
 }
 
@@ -276,6 +277,7 @@ func (a *App) CallInitFunctions() {
 	client, crypto := createClient(a.sota)
 	defer crypto.Close()
 	a.callInitFunctions(client, crypto)
+	callInitFunctions(a, client)
 }
 
 func (a *App) callInitFunctions(client *http.Client, crypto CryptoHandler) {
