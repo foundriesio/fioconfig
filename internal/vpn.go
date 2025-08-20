@@ -64,8 +64,12 @@ func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
 		if err != nil {
 			return fmt.Errorf("Unable to generate private key: %s", err)
 		}
+		files, err := getVpnCfgFiles(app, pub)
+		if err != nil {
+			return fmt.Errorf("Unable to generate VPN config files: %s", err)
+		}
 		log.Printf("Uploading Wireguard pub key(%s).", pub)
-		if err := updateVpnConfig(app, client, pub); err != nil {
+		if err := updateVpnConfig(app, client, files); err != nil {
 			return fmt.Errorf("Unable to server config with VPN public key: %s", err)
 		}
 		if err = os.Rename(wgPrivTmp, wgPriv); err != nil {
@@ -75,14 +79,14 @@ func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
 	return nil
 }
 
-func updateVpnConfig(app *App, client *http.Client, pubkey string) error {
+func getVpnCfgFiles(app *App, pubkey string) ([]ConfigFileReq, error) {
 	updated := ""
 	content, err := os.ReadFile(filepath.Join(app.SecretsDir, "wireguard-client"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			updated = "enabled=0\n" // This isn't enabled
 		} else {
-			return err
+			return nil, err
 		}
 	}
 	written := false
@@ -100,15 +104,20 @@ func updateVpnConfig(app *App, client *http.Client, pubkey string) error {
 	}
 	updated = strings.TrimSpace(updated)
 
+	files := []ConfigFileReq{
+		{
+			Name:        "wireguard-client",
+			Unencrypted: true,
+			Value:       updated,
+		},
+	}
+	return files, nil
+}
+
+func updateVpnConfig(app *App, client *http.Client, files []ConfigFileReq) error {
 	ccr := ConfigCreateRequest{
 		Reason: "Set Wireguard pubkey from fioconfig",
-		Files: []ConfigFileReq{
-			{
-				Name:        "wireguard-client",
-				Unencrypted: true,
-				Value:       updated,
-			},
-		},
+		Files:  files,
 	}
 	res, err := transport.HttpPatch(client, app.configUrl, ccr)
 	if err != nil {
