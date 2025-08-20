@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/foundriesio/fioconfig/transport"
 )
 
 // Create a private key and return the derived public key
@@ -63,12 +65,57 @@ func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
 			return fmt.Errorf("Unable to generate private key: %s", err)
 		}
 		log.Printf("Uploading Wireguard pub key(%s).", pub)
-		if err := updateConfig(app, client, pub); err != nil {
+		if err := updateVpnConfig(app, client, pub); err != nil {
 			return fmt.Errorf("Unable to server config with VPN public key: %s", err)
 		}
 		if err = os.Rename(wgPrivTmp, wgPriv); err != nil {
 			return fmt.Errorf("Unable to write wireguard private key: %s", err)
 		}
+	}
+	return nil
+}
+
+func updateVpnConfig(app *App, client *http.Client, pubkey string) error {
+	updated := ""
+	content, err := os.ReadFile(filepath.Join(app.SecretsDir, "wireguard-client"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			updated = "enabled=0\n" // This isn't enabled
+		} else {
+			return err
+		}
+	}
+	written := false
+
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "pubkey=") {
+			updated += "pubkey=" + pubkey + "\n"
+			written = true
+		} else {
+			updated += line + "\n"
+		}
+	}
+	if !written {
+		updated += "pubkey=" + pubkey + "\n"
+	}
+	updated = strings.TrimSpace(updated)
+
+	ccr := ConfigCreateRequest{
+		Reason: "Set Wireguard pubkey from fioconfig",
+		Files: []ConfigFileReq{
+			{
+				Name:        "wireguard-client",
+				Unencrypted: true,
+				Value:       updated,
+			},
+		},
+	}
+	res, err := transport.HttpPatch(client, app.configUrl, ccr)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != 201 {
+		return fmt.Errorf("Unable to update: %s - HTTP_%d: %s", app.configUrl, res.StatusCode, string(res.Body))
 	}
 	return nil
 }
