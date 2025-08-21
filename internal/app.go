@@ -21,9 +21,6 @@ const onChangedForceExit = 123
 
 var NotModifiedError = errors.New("Config unchanged on server")
 
-// Functions to be called when the daemon is initialized
-var initFunctions = map[string]func(app *App, client *http.Client, crypto CryptoHandler) error{}
-
 type CryptoHandler interface {
 	Decrypt(value string) ([]byte, error)
 	Close()
@@ -249,7 +246,6 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 func (a *App) CheckIn() error {
 	client, crypto := createClient(a.sota)
 	defer crypto.Close()
-	a.callInitFunctions(client, crypto)
 	callInitFunctions(a, client)
 	return a.checkin(client, crypto)
 }
@@ -276,17 +272,5 @@ func (a *App) RunAndReport(name, testId, artifactsDir string, args []string) err
 func (a *App) CallInitFunctions() {
 	client, crypto := createClient(a.sota)
 	defer crypto.Close()
-	a.callInitFunctions(client, crypto)
 	callInitFunctions(a, client)
-}
-
-func (a *App) callInitFunctions(client *http.Client, crypto CryptoHandler) {
-	for name, cb := range initFunctions {
-		log.Printf("Running %s initialization", name)
-		if err := cb(a, client, crypto); err != nil {
-			log.Println("ERROR:", err)
-		} else {
-			delete(initFunctions, name)
-		}
-	}
 }
