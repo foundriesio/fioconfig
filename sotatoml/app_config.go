@@ -73,6 +73,15 @@ func NewAppConfig(configPaths []string) (*AppConfig, error) {
 	return &cfg, nil
 }
 
+func (c AppConfig) Has(key string) bool {
+	for i := range c.cfgs {
+		if c.cfgs[i].tree.Has(key) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c AppConfig) Get(key string) string {
 	for i := range c.cfgs {
 		val := c.cfgs[i].tree.GetDefault(key, "").(string)
