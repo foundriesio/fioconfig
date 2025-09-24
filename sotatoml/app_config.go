@@ -3,6 +3,7 @@ package sotatoml
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -71,6 +72,19 @@ func NewAppConfig(configPaths []string) (*AppConfig, error) {
 
 	cfg := AppConfig{cfgs: keys}
 	return &cfg, nil
+}
+
+func (c AppConfig) CombinedConfig() (*toml.Tree, error) {
+	var combined map[string]any
+	for i := len(c.cfgs) - 1; i >= 0; i-- {
+		tree := c.cfgs[i].tree.ToMap()
+		if combined == nil {
+			combined = tree
+		} else {
+			maps.Copy(combined, tree)
+		}
+	}
+	return toml.TreeFromMap(combined)
 }
 
 func (c AppConfig) Has(key string) bool {

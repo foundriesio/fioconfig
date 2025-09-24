@@ -104,6 +104,10 @@ key = "val"`
 	cfg2, err = NewAppConfig([]string{varSota, usrLib})
 	require.Nil(t, err)
 	require.Equal(t, "this should work", cfg2.Get("main.usrlib"))
+
+	combined, err := cfg2.CombinedConfig()
+	require.Nil(t, err)
+	require.Equal(t, "this should work", combined.Get("main.usrlib"))
 }
 
 func TestIsWritable(t *testing.T) {
