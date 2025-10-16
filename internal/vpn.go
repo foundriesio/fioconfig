@@ -5,14 +5,15 @@ package internal
 
 import (
 	"bytes"
-	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+type vpnInitCallback struct {
+}
 
 // Create a private key and return the derived public key
 func generateKey(privKeyPath string) (string, error) {
@@ -47,7 +48,7 @@ func vpnBugFix(app *App, sotaConfig string) bool {
 	return false
 }
 
-func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
+func (v *vpnInitCallback) ConfigFiles(app *App) []ConfigFileReq {
 	wgPriv := filepath.Join(app.StorageDir, "wg-priv")
 	register := false
 	if _, err := os.Stat(wgPriv); os.IsNotExist(err) {
@@ -60,19 +61,66 @@ func initVpn(app *App, client *http.Client, crypto CryptoHandler) error {
 		wgPrivTmp := wgPriv + ".tmp"
 		pub, err := generateKey(wgPrivTmp)
 		if err != nil {
-			return fmt.Errorf("Unable to generate private key: %s", err)
+			log.Printf("Unable to generate private key: %s", err)
+			return nil
 		}
-		log.Printf("Uploading Wireguard pub key(%s).", pub)
-		if err := updateConfig(app, client, pub); err != nil {
-			return fmt.Errorf("Unable to server config with VPN public key: %s", err)
+		files, err := getVpnCfgFiles(app, pub)
+		if err != nil {
+			log.Printf("Unable to generate VPN config files: %s", err)
+			return nil
 		}
-		if err = os.Rename(wgPrivTmp, wgPriv); err != nil {
-			return fmt.Errorf("Unable to write wireguard private key: %s", err)
-		}
+		return files
 	}
+
+	// prevent init logic from calling OnComplete by removing ourselves
+	delete(initCallbacks, "wireguard-vpn")
 	return nil
 }
 
+func (v vpnInitCallback) OnComplete(app *App) {
+	wgPriv := filepath.Join(app.StorageDir, "wg-priv")
+	if err := os.Rename(wgPriv+".tmp", wgPriv); err != nil {
+		log.Printf("Unable to write wireguard private key: %s", err)
+		return
+	}
+	delete(initCallbacks, "wireguard-vpn")
+}
+
+func getVpnCfgFiles(app *App, pubkey string) ([]ConfigFileReq, error) {
+	updated := ""
+	content, err := os.ReadFile(filepath.Join(app.SecretsDir, "wireguard-client"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			updated = "enabled=0\n" // This isn't enabled
+		} else {
+			return nil, err
+		}
+	}
+	written := false
+
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "pubkey=") {
+			updated += "pubkey=" + pubkey + "\n"
+			written = true
+		} else {
+			updated += line + "\n"
+		}
+	}
+	if !written {
+		updated += "pubkey=" + pubkey + "\n"
+	}
+	updated = strings.TrimSpace(updated)
+
+	files := []ConfigFileReq{
+		{
+			Name:        "wireguard-client",
+			Unencrypted: true,
+			Value:       updated,
+		},
+	}
+	return files, nil
+}
+
 func init() {
-	initFunctions["wireguard-vpn"] = initVpn
+	initCallbacks["wireguard-vpn"] = &vpnInitCallback{}
 }

@@ -407,23 +407,6 @@ func TestCheckGood(t *testing.T) {
 	})
 }
 
-func TestInitFunctions(t *testing.T) {
-	called := false
-	initFunctions["OkComputer"] = func(app *App, client *http.Client, crypto CryptoHandler) error {
-		called = true
-		return nil
-	}
-	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
-		app.CallInitFunctions()
-	})
-	if !called {
-		t.Fatal("init function not called")
-	}
-	if len(initFunctions) != 0 {
-		t.Fatal("initFunctions not cleared")
-	}
-}
-
 func TestFiotest(t *testing.T) {
 	var appRef *App
 	doGet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
