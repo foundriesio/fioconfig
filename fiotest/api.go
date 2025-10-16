@@ -3,7 +3,7 @@ package fiotest
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -84,7 +84,7 @@ func (t Test) Complete(result Result) error {
 		if strings.HasPrefix(url, t.url) {
 			uploadClient = t.client
 		}
-		log.Printf("Uploading artifact: %s", name)
+		slog.Info("Uploading artifact", "artifact", name)
 		headers := map[string]string{"Content-Type": rr[name].ContentType}
 		res, err = transport.HttpDo(uploadClient, http.MethodPut, url, headers, artifact.Content())
 		if err != nil {

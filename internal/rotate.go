@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"log"
+	"log/slog"
 )
 
 type CertRotationState struct {
@@ -76,7 +76,7 @@ func (h *CertRotationHandler) ResumeRotation(online bool) error {
 		// update sota.toml but didn't update config.encrypted. In this case
 		// we can complete that one step locally and be good.
 		if h.State.DeviceConfigUpdated && !h.State.Finalized {
-			log.Print("Incomplete certificate rotation state found. Will attempt to complete")
+			slog.Warn("Incomplete certificate rotation state found. Will attempt to complete")
 			step := finalizeStep{}
 			if err := step.Execute(&h.stateContext); err != nil {
 				return err
@@ -86,9 +86,9 @@ func (h *CertRotationHandler) ResumeRotation(online bool) error {
 			// event to the device gateway
 			return h.Save()
 		}
-		log.Print("Incomplete certificate rotation state found.")
+		slog.Warn("Incomplete certificate rotation state found.")
 		return nil
 	}
-	log.Print("Incomplete certificate rotation state found. Will attempt to complete")
+	slog.Warn("Incomplete certificate rotation state found. Will attempt to complete")
 	return h.Rotate()
 }

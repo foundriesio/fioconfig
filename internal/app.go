@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -67,8 +68,7 @@ func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bo
 	}
 	sota, err := sotatoml.NewAppConfig(configPaths)
 	if err != nil {
-		fmt.Println("ERROR - unable to decode sota.toml:", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("unable to parse sota.toml: %w", err)
 	}
 	// Assert we have a sane configuration
 	_, crypto := createClient(sota)
@@ -113,7 +113,7 @@ func (a *App) extract(config configSnapshot) error {
 
 	all_fname := make(map[string]bool)
 	for fname, cfgFile := range config.next {
-		log.Printf("Extracting %s", fname)
+		slog.Info("Extracting file", "file", fname)
 		all_fname[fname] = true
 		fullpath := filepath.Join(a.SecretsDir, fname)
 		dirName := filepath.Dir(fullpath)
@@ -137,7 +137,7 @@ func (a *App) extract(config configSnapshot) error {
 		if _, ok := all_fname[fname]; ok {
 			continue
 		}
-		log.Printf("Removing %s", fname)
+		slog.Info("Removing file", "file", fname)
 		fullpath := filepath.Join(a.SecretsDir, fname)
 		if err := os.Remove(fullpath); err != nil && !os.IsNotExist(err) {
 			return err
@@ -145,7 +145,7 @@ func (a *App) extract(config configSnapshot) error {
 		a.runOnChanged(fname, fullpath, cfgFile.OnChanged)
 	}
 	if err := DeleteEmptyDirs(a.SecretsDir); err != nil {
-		log.Printf("ERROR removing empty directories: %s", err)
+		slog.Error("Unable to remove empty directories", "error", err)
 	}
 	return nil
 }
@@ -164,12 +164,12 @@ func (a *App) Extract() error {
 func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 	path, err := os.Readlink("/proc/self/exe")
 	if err != nil {
-		log.Printf("Unable to find path to self via /proc/self/exe: %s", err)
+		slog.Error("Unable to find path to self via /proc/self/exe", "error", err)
 	}
 	if len(onChanged) > 0 {
 		binary := filepath.Clean(onChanged[0])
 		if a.unsafeHandlers || strings.HasPrefix(binary, "/usr/share/fioconfig/handlers/") {
-			log.Printf("Running on-change command for %s: %v", fname, onChanged)
+			slog.Info("Running on-change command", "file", fname, "args", onChanged)
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
 			cmd.Env = append(cmd.Env, "STORAGE_DIR="+a.StorageDir)
@@ -178,7 +178,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
-				log.Printf("Unable to run command: %v", err)
+				slog.Error("Unable to run command", "command", onChanged, "error", err)
 				if exitError, ok := err.(*exec.ExitError); ok {
 					if exitError.ExitCode() == onChangedForceExit {
 						a.exitFunc(onChangedForceExit)
@@ -186,7 +186,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 				}
 			}
 		} else {
-			log.Printf("Skipping unsafe on-change command for %s: %v.", fname, onChanged)
+			slog.Warn("Skipping unsafe on-change command", "file", fname, "args", onChanged)
 		}
 	}
 }
@@ -199,7 +199,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 	if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
 		var perr *os.PathError
 		if !errors.As(err, &perr) || !os.IsNotExist(perr) {
-			log.Printf("Unable to load previous config version: %s. Forcing config update", err)
+			slog.Error("Unable to load previous config version", "error", err)
 		}
 	} else if fi, err := os.Stat(a.EncryptedConfig); err == nil {
 		// Don't pull it down unless we need to
@@ -226,7 +226,7 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 
 		modtime, err := time.Parse(time.RFC1123, res.Header.Get("Date"))
 		if err != nil {
-			log.Printf("Unable to get modtime of config file, defaulting to 'now': %s", err)
+			slog.Warn("Unable to get modtime of config file, defaulting to 'now'", "error", err)
 			modtime = time.Now()
 		}
 		if err = os.Chtimes(a.EncryptedConfig, modtime, modtime); err != nil {
@@ -234,10 +234,10 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 		}
 		return nil
 	} else if res.StatusCode == 304 {
-		log.Println("Config on server has not changed")
+		slog.Info("Config on server has not changed")
 		return NotModifiedError
 	} else if res.StatusCode == 204 {
-		log.Println("Device has no config defined on server")
+		slog.Info("Device has no config defined on server")
 		return NotModifiedError
 	}
 	return fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, res.String())

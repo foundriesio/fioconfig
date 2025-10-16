@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,7 +31,7 @@ type state interface {
 func (s *BaseState) GetCorrelationId() string {
 	if len(s.CorrelationId) == 0 {
 		s.CorrelationId = fmt.Sprintf("certs-%d", time.Now().Unix())
-		log.Printf("Setting default correlation id to: %s", s.CorrelationId)
+		slog.Info("Setting default correlation id", "id", s.CorrelationId)
 	}
 	return s.CorrelationId
 }
@@ -70,7 +71,7 @@ func newStateContext[T state](app *App, stateFile string, state T) stateContext[
 
 	target, err := LoadCurrentTarget(filepath.Join(app.StorageDir, "current-target"))
 	if err != nil {
-		log.Printf("Unable to parse current-target. Events posted to server will be missing content: %s", err)
+		slog.Error("Unable to parse current-target. Events posted to server will be missing content", "error", err)
 	}
 
 	client, crypto := createClient(app.sota)
@@ -108,11 +109,11 @@ func (h *stateContext[T]) Restore() (loaded bool) {
 			return false
 		} else {
 			// Looks like we started a rotation, we should try and finish it
-			log.Printf("Error reading %s, return empty state: %s", h.stateFile, err)
+			slog.Error("Unable to read state file", "file", h.stateFile, "error", err)
 		}
 	}
 	if err = json.Unmarshal(bytes, &h.State); err != nil {
-		log.Printf("Error unmarshalling %s, return empty state %s", h.stateFile, err)
+		slog.Error("Unable to unmarshall state file", "file", h.stateFile, "error", err)
 	}
 	return true
 }
@@ -131,9 +132,9 @@ func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool
 	currentIdx := h.State.GetCurrentStep()
 	for idx, step := range h.steps {
 		if idx < currentIdx {
-			log.Printf("Step already completed: %s", step.Name())
+			slog.Info("Step already completed", "step", step.Name())
 		} else {
-			log.Printf("Executing step: %s", step.Name())
+			slog.Info("Executing step", "step", step.Name())
 			if err = step.Execute(&h.stateContext); err != nil {
 				h.eventSync.Notify(step.Name(), err)
 				return err
