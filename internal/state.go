@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -167,12 +166,12 @@ func (h *stateHandler[T]) RestartServices() {
 	ctx := context.Background()
 	con, err := dbus.NewSystemConnectionContext(ctx)
 	if err != nil {
-		log.Fatalf("Unable to connect to DBUS for service restarts: %s", err)
+		Fatal("Unable to connect to DBUS for service restarts", "error", err)
 	}
 	services := []string{"aktualizr-lite.service", "fioconfig.service"}
 	units, err := con.ListUnitsByNamesContext(ctx, []string{services[0]})
 	if err != nil {
-		log.Fatalf("Unable to query status of units: %s", err)
+		Fatal("Unable to query status of units", "error", err)
 	}
 	akliteSvc := units[0]
 	for _, svc := range services {
@@ -182,14 +181,14 @@ func (h *stateHandler[T]) RestartServices() {
 		}
 		_, err = con.RestartUnitContext(ctx, svc, "replace", restartChan)
 		if err != nil {
-			log.Fatalf("Unable to restart: %s, %s", svc, err)
+			Fatal("Unable to restart service", "service", svc, "error", err)
 		}
 		result := <-restartChan
 		switch result {
 		case "done":
 			continue
 		default:
-			log.Fatalf("Error restarting %s: %s", svc, result)
+			Fatal("Error restarting service", "service", svc, "error", result)
 		}
 	}
 }

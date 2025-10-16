@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -48,7 +47,7 @@ type App struct {
 func createClient(cfg *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
 	tlsCfg, extra, err := transport.GetTlsConfig(cfg)
 	if err != nil {
-		log.Fatal(err)
+		Fatal("Unable to create TLS config", "error", err)
 	}
 	transport := &http.Transport{TLSClientConfig: tlsCfg}
 	client := &http.Client{Timeout: time.Second * 30, Transport: transport}
@@ -57,7 +56,7 @@ func createClient(cfg *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
 		if handler := NewEciesLocalHandler(tlsCfg.Certificates[0].PrivateKey); handler != nil {
 			return client, handler
 		}
-		log.Fatal("unsupported private key")
+		Fatal("Unsupported private key")
 	}
 	return client, NewEciesPkcs11Handler(extra, tlsCfg.Certificates[0].PrivateKey)
 }

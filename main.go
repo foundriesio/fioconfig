@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -251,6 +250,6 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
+		internal.Fatal(err.Error())
 	}
 }
