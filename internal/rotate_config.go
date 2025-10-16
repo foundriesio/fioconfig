@@ -6,7 +6,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/foundriesio/fioconfig/transport"
@@ -78,7 +78,7 @@ func (s deviceCfgStep) Execute(handler *certRotationContext) error {
 	}
 	config, err := UnmarshallBuffer(handler.crypto, res.Body, true)
 	if err != nil {
-		log.Printf("Unable to decrypt device config with old key, trying new key: %s", err)
+		slog.Info("Unable to decrypt device config with old key, trying new key", "error", err)
 		// There's a chance that we'd uploaded this config with the new key and
 		// had a power failure before we saved the state to disk. Check if
 		// we can decrypt with that key before giving up.

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -96,7 +96,7 @@ func HttpDo(client *http.Client, method, url string, headers map[string]string, 
 	var res *HttpRes
 	for _, delay := range []int{0, 1, 2, 5, 13, 30} {
 		if delay != 0 {
-			log.Printf("HTTP %s to %s failed, trying again in %d seconds", url, method, delay)
+			slog.Warn("HTTP request failed, retrying", "url", url, "method", method, "delay", delay, "status", res.StatusCode, "error", err)
 			time.Sleep(time.Second * time.Duration(delay))
 		}
 		res, err = httpDoOnce(client, method, url, headers, data)

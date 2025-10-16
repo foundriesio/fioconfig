@@ -5,7 +5,7 @@ package internal
 
 import (
 	"bytes"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,7 +42,7 @@ func vpnBugFix(app *App, sotaConfig string) bool {
 	// will pick up this OTA, and we'll be able to remove this quirk.
 	secretFile := filepath.Join(app.SecretsDir, "wireguard-client")
 	if _, err := os.Stat(secretFile); os.IsNotExist(err) {
-		log.Println("Wireguard key not registered on server, will re-register")
+		slog.Info("Wireguard key not registered on server, will re-register")
 		return true
 	}
 	return false
@@ -53,7 +53,7 @@ func (v *vpnInitCallback) ConfigFiles(app *App) []ConfigFileReq {
 	register := false
 	if _, err := os.Stat(wgPriv); os.IsNotExist(err) {
 		register = true
-		log.Println("Wireguard private key does not exist, generating.")
+		slog.Info("Wireguard private key does not exist, generating.", "path", wgPriv)
 	} else {
 		register = vpnBugFix(app, app.StorageDir)
 	}
@@ -61,12 +61,12 @@ func (v *vpnInitCallback) ConfigFiles(app *App) []ConfigFileReq {
 		wgPrivTmp := wgPriv + ".tmp"
 		pub, err := generateKey(wgPrivTmp)
 		if err != nil {
-			log.Printf("Unable to generate private key: %s", err)
+			slog.Error("Unable to generate private key", "error", err)
 			return nil
 		}
 		files, err := getVpnCfgFiles(app, pub)
 		if err != nil {
-			log.Printf("Unable to generate VPN config files: %s", err)
+			slog.Error("Unable to generate VPN config files", "error", err)
 			return nil
 		}
 		return files
@@ -80,7 +80,7 @@ func (v *vpnInitCallback) ConfigFiles(app *App) []ConfigFileReq {
 func (v vpnInitCallback) OnComplete(app *App) {
 	wgPriv := filepath.Join(app.StorageDir, "wg-priv")
 	if err := os.Rename(wgPriv+".tmp", wgPriv); err != nil {
-		log.Printf("Unable to write wireguard private key: %s", err)
+		slog.Error("Unable to write wireguard private key", "error", err)
 		return
 	}
 	delete(initCallbacks, "wireguard-vpn")

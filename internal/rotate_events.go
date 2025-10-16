@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -56,9 +56,9 @@ func (s *DgEventSync) Notify(event string, err error) {
 	}
 	res, err := transport.HttpPost(s.client, s.url, evt)
 	if err != nil {
-		log.Printf("Unable to send event: %s", err)
+		slog.Error("Unable to send event", "error", err)
 	} else if res.StatusCode < 200 || res.StatusCode > 204 {
-		log.Printf("Server could not process event(%s): HTTP_%d - %s", event, res.StatusCode, res.String())
+		slog.Error("Server could not process event", "event", event, "status", res.StatusCode, "response", res.String())
 	}
 }
 

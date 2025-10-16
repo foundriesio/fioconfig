@@ -3,7 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 )
 
@@ -33,7 +33,7 @@ func UnmarshallBuffer(c CryptoHandler, encContent []byte, decrypt bool) (ConfigS
 	if decrypt {
 		for fname, cfgFile := range config {
 			if !cfgFile.Unencrypted {
-				log.Printf("Decoding value of %s", fname)
+				slog.Info("Decoding value", "file", fname)
 				decrypted, err := c.Decrypt(cfgFile.Value)
 				if err != nil {
 					return nil, fmt.Errorf("%s: %v", fname, err)

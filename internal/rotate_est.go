@@ -14,7 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/foundriesio/fioconfig/sotatoml"
@@ -124,7 +124,7 @@ func (s estStep) nextPkeyId(handler *certRotationContext) string {
 			return val
 		}
 	}
-	log.Printf("ERROR: Unable to find a new key id. Will use slot 07")
+	slog.Warn("Unable to find a new key id. Will use slot 07")
 	return "07"
 }
 
@@ -135,7 +135,7 @@ func (s estStep) nextCertId(handler *certRotationContext) string {
 			return val
 		}
 	}
-	log.Printf("ERROR: Unable to find a new clientcert id. Will use slot 09")
+	slog.Warn("Unable to find a new clientcert id. Will use slot 09")
 	return "09"
 }
 

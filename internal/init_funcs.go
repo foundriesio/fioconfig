@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/foundriesio/fioconfig/transport"
@@ -19,16 +19,16 @@ func callInitFunctions(a *App, client *http.Client) {
 		Reason: "Set initial fioconfig device data",
 	}
 	for name, cb := range initCallbacks {
-		log.Printf("Running %s initialization", name)
+		slog.Info("Running initialization", "callback", name)
 		ccr.Files = append(ccr.Files, cb.ConfigFiles(a)...)
 	}
 
 	if len(ccr.Files) > 0 {
 		res, err := transport.HttpPatch(client, a.configUrl, ccr)
 		if err != nil {
-			log.Printf("Unexpected error creating initialization request: %s", err)
+			slog.Error("Unexpected error creating initialization request", "error", err)
 		} else if res.StatusCode != 201 {
-			log.Printf("Unable to update: %s - HTTP_%d: %s", a.configUrl, res.StatusCode, string(res.Body))
+			slog.Error("Unable to update", "url", a.configUrl, "status", res.StatusCode, "response", string(res.Body))
 			return
 		}
 	}

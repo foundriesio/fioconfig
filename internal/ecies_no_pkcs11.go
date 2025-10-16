@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 
 	ecies "github.com/foundriesio/go-ecies"
@@ -73,11 +72,11 @@ func (ec *EciesCrypto) Close() {
 }
 
 func NewEciesPkcs11Handler(ctx any, privKey crypto.PrivateKey) CryptoHandler {
-	log.Fatal("NewEciesPkcs11Handler should not be called in disable_pkcs11 build")
+	Fatal("NewEciesPkcs11Handler should not be called in disable_pkcs11 build")
 	return nil
 }
 
 func getPkcs11CryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
-	log.Fatal("getPkcs11CryptoHandler should not be called in disable_pkcs11 build")
+	Fatal("getPkcs11CryptoHandler should not be called in disable_pkcs11 build")
 	return nil, nil
 }

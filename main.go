@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,15 +39,15 @@ func extract(c *cli.Context) error {
 	}
 
 	if _, err := os.Stat(app.SecretsDir); os.IsNotExist(err) {
-		log.Printf("Creating secrets directory: %s", app.SecretsDir)
+		slog.Info("Creating secrets directory", "dir", app.SecretsDir)
 		if err := os.Mkdir(app.SecretsDir, 0750); err != nil {
 			return err
 		}
 	}
-	log.Printf("Extracting keys from %s to %s", app.EncryptedConfig, app.SecretsDir)
+	slog.Info("Extracting keys", "from", app.EncryptedConfig, "to", app.SecretsDir)
 	if err := app.Extract(); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			log.Println("Encrypted config does not exist")
+			slog.Info("Encrypted config does not exist")
 		} else {
 			return err
 		}
@@ -60,7 +60,7 @@ func checkin(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Print("Checking in with server")
+	slog.Info("Checking in with server")
 	if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
 		return err
 	}
@@ -73,11 +73,11 @@ func daemon(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Running as daemon with interval %d seconds", c.Int("interval"))
+	slog.Info("Running as daemon", "interval", c.Int("interval"))
 	for {
-		log.Print("Checking in with server")
+		slog.Info("Checking in with server")
 		if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
-			log.Println(err)
+			slog.Error("Check-in failed", "error", err)
 		}
 		time.Sleep(interval)
 	}
@@ -103,9 +103,9 @@ func renewCert(c *cli.Context) error {
 		handler.State.CorrelationId = c.Args().Get(1)
 	}
 
-	log.Printf("Performing certificate renewal")
+	slog.Info("Performing certificate renewal")
 	if err = handler.Rotate(); err == nil {
-		log.Print("Certificate rotation sequence complete")
+		slog.Info("Certificate rotation sequence complete")
 	}
 	return err
 }
@@ -134,7 +134,7 @@ func runAndReport(c *cli.Context) error {
 	}
 
 	args := c.Args().Slice()
-	log.Printf("Running %s", args)
+	slog.Info("Running command", "args", args)
 	return app.RunAndReport(testName, testId, c.String("artifacts-dir"), args)
 }
 
@@ -250,6 +250,6 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
+		internal.Fatal(err.Error())
 	}
 }
