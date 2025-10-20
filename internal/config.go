@@ -33,7 +33,7 @@ func UnmarshallBuffer(c CryptoHandler, encContent []byte, decrypt bool) (ConfigS
 	if decrypt {
 		for fname, cfgFile := range config {
 			if !cfgFile.Unencrypted {
-				slog.Info("Decoding value", "file", fname)
+				slog.Debug("Decoding value", "file", fname)
 				decrypted, err := c.Decrypt(cfgFile.Value)
 				if err != nil {
 					return nil, fmt.Errorf("%s: %v", fname, err)
