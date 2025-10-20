@@ -61,7 +61,7 @@ func createClient(cfg *sotatoml.AppConfig) (*http.Client, CryptoHandler) {
 	return client, NewEciesPkcs11Handler(extra, tlsCfg.Certificates[0].PrivateKey)
 }
 
-func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bool) (*App, error) {
+func NewApp(configPaths []string, secretsDir string, unsafeHandlers, testing bool) (*App, error) {
 	if len(configPaths) == 0 {
 		configPaths = sotatoml.DEF_CONFIG_ORDER
 	}
@@ -84,7 +84,7 @@ func NewApp(configPaths []string, secrets_dir string, unsafeHandlers, testing bo
 	app := App{
 		StorageDir:      storagePath,
 		EncryptedConfig: filepath.Join(storagePath, "config.encrypted"),
-		SecretsDir:      secrets_dir,
+		SecretsDir:      secretsDir,
 		configUrl:       url,
 		configPaths:     configPaths,
 		sota:            sota,
