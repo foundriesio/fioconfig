@@ -68,6 +68,10 @@ func NewApp(configPaths []string, secretsDir string, unsafeHandlers, testing boo
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse sota.toml: %w", err)
 	}
+	return NewAppWithConfig(sota, secretsDir, unsafeHandlers, testing)
+}
+
+func NewAppWithConfig(sota *sotatoml.AppConfig, secretsDir string, unsafeHandlers, testing bool) (*App, error) {
 	// Assert we have a sane configuration
 	_, crypto := createClient(sota)
 	crypto.Close()
