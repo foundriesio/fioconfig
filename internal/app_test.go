@@ -401,7 +401,7 @@ func TestCheckGood(t *testing.T) {
 		assertFile(t, random, nil)
 		if barChangedStat, err := os.Stat(barChanged); err != nil {
 			t.Fatal(err)
-		} else if barChangedTime == barChangedStat.ModTime() {
+		} else if barChangedTime.Equal(barChangedStat.ModTime()) {
 			t.Fatalf("A barChanged modstamp is ought to change")
 		}
 	})
