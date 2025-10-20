@@ -37,7 +37,6 @@ type App struct {
 	SecretsDir      string
 
 	configUrl      string
-	configPaths    []string
 	unsafeHandlers bool
 	sota           *sotatoml.AppConfig
 
@@ -86,7 +85,6 @@ func NewApp(configPaths []string, secretsDir string, unsafeHandlers, testing boo
 		EncryptedConfig: filepath.Join(storagePath, "config.encrypted"),
 		SecretsDir:      secretsDir,
 		configUrl:       url,
-		configPaths:     configPaths,
 		sota:            sota,
 		unsafeHandlers:  unsafeHandlers,
 		exitFunc:        os.Exit,
@@ -172,7 +170,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
 			cmd.Env = append(cmd.Env, "STORAGE_DIR="+a.StorageDir)
-			cmd.Env = append(cmd.Env, "SOTA_DIR="+strings.Join(a.configPaths, ","))
+			cmd.Env = append(cmd.Env, "SOTA_DIR="+strings.Join(a.sota.SearchPaths(), ","))
 			cmd.Env = append(cmd.Env, "FIOCONFIG_BIN="+path)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr

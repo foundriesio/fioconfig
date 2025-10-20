@@ -28,7 +28,8 @@ type cfgFile struct {
 }
 
 type AppConfig struct {
-	cfgs []*cfgFile
+	searchPaths []string
+	cfgs        []*cfgFile
 }
 
 // NewAppConfig parses config files as per:
@@ -70,8 +71,13 @@ func NewAppConfig(configPaths []string) (*AppConfig, error) {
 		}
 	}
 
-	cfg := AppConfig{cfgs: keys}
+	cfg := AppConfig{cfgs: keys, searchPaths: configPaths}
 	return &cfg, nil
+}
+
+// SearchPaths returns the list of config paths used to build this AppConfig
+func (c AppConfig) SearchPaths() []string {
+	return c.searchPaths
 }
 
 func (c AppConfig) CombinedConfig() (*toml.Tree, error) {
