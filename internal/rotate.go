@@ -38,7 +38,7 @@ func NewCertRotationHandler(app *App, stateFile, estServer string) *CertRotation
 	state := &CertRotationState{EstServer: estServer}
 	return &CertRotationHandler{
 		stateHandler[*CertRotationState]{
-			stateContext: newStateContext[*CertRotationState](app, stateFile, state),
+			stateContext: newStateContext(app, stateFile, state),
 			steps: []certRotationStep{
 				estStep{},
 				lockStep{},
