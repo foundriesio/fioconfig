@@ -1,6 +1,6 @@
 module github.com/foundriesio/fioconfig
 
-go 1.22
+go 1.22.0
 
 require (
 	github.com/ThalesIgnite/crypto11 v1.2.5
@@ -12,6 +12,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli/v2 v2.27.1
 	go.mozilla.org/pkcs7 v0.0.0-20210826202110-33d05740a352
+	golang.org/x/sys v0.30.0
 )
 
 require (

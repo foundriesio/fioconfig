@@ -10,12 +10,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/foundriesio/fioconfig/app"
 	"github.com/foundriesio/fioconfig/internal"
 	"github.com/foundriesio/fioconfig/sotatoml"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sys/unix"
 )
 
+func isTerminal(fd *os.File) bool {
+	_, err := unix.IoctlGetTermios(int(fd.Fd()), unix.TCGETS)
+	return err == nil
+}
+
 func NewApp(c *cli.Context) (*internal.App, error) {
+	if isTerminal(os.Stderr) {
+		orig := slog.NewTextHandler(os.Stderr, nil)
+		handler := app.NewConsoleHandler(orig, os.Stdout, os.Stderr)
+		logger := slog.New(handler)
+		slog.SetDefault(logger)
+	}
+
 	app, err := internal.NewApp(c.StringSlice("config"), c.String("secrets-dir"), c.Bool("unsafe-handlers"), false)
 	if err != nil {
 		return nil, err
@@ -60,7 +74,8 @@ func checkin(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("Checking in with server")
+
+	slog.Info("Checking in with server ...")
 	if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
 		return err
 	}
