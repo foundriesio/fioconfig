@@ -11,7 +11,6 @@ import (
 	"github.com/foundriesio/fioconfig/sotatoml"
 )
 
-
 func loadCertPkcs11(cfg *sotatoml.AppConfig) (*crypto11.Context, tls.Certificate, error) {
 	module := cfg.Get("p11.module")
 	pin := cfg.Get("p11.pass")
