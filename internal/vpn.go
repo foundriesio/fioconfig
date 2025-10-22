@@ -53,7 +53,7 @@ func (v *vpnInitCallback) ConfigFiles(app *App) []ConfigFileReq {
 	register := false
 	if _, err := os.Stat(wgPriv); os.IsNotExist(err) {
 		register = true
-		slog.Info("Wireguard private key does not exist, generating.", "path", wgPriv)
+		slog.Info("Wireguard private key does not exist, generating", "path", wgPriv)
 	} else {
 		register = vpnBugFix(app, app.StorageDir)
 	}
