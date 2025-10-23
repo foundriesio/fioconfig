@@ -177,9 +177,8 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 			cmd.Env = append(cmd.Env, "STORAGE_DIR="+a.StorageDir)
 			cmd.Env = append(cmd.Env, "SOTA_DIR="+strings.Join(a.sota.SearchPaths(), ","))
 			cmd.Env = append(cmd.Env, "FIOCONFIG_BIN="+path)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+
+			if err := ExecIndented(cmd, "| "); err != nil {
 				slog.Error("Unable to run command", "command", onChanged, "error", err)
 				if exitError, ok := err.(*exec.ExitError); ok {
 					if exitError.ExitCode() == onChangedForceExit {
