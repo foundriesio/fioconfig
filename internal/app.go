@@ -20,6 +20,7 @@ import (
 const onChangedForceExit = 123
 
 var NotModifiedError = errors.New("Config unchanged on server")
+var HandlersDir = "/usr/share/fioconfig/handlers/"
 
 type CryptoHandler interface {
 	Decrypt(value string) ([]byte, error)
@@ -169,16 +170,15 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 	}
 	if len(onChanged) > 0 {
 		binary := filepath.Clean(onChanged[0])
-		if a.unsafeHandlers || strings.HasPrefix(binary, "/usr/share/fioconfig/handlers/") {
+		if a.unsafeHandlers || strings.HasPrefix(binary, HandlersDir) {
 			slog.Info("Running on-change command", "file", fname, "args", onChanged)
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
 			cmd.Env = append(cmd.Env, "STORAGE_DIR="+a.StorageDir)
 			cmd.Env = append(cmd.Env, "SOTA_DIR="+strings.Join(a.sota.SearchPaths(), ","))
 			cmd.Env = append(cmd.Env, "FIOCONFIG_BIN="+path)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+
+			if err := ExecIndented(cmd, "| "); err != nil {
 				slog.Error("Unable to run command", "command", onChanged, "error", err)
 				if exitError, ok := err.(*exec.ExitError); ok {
 					if exitError.ExitCode() == onChangedForceExit {
