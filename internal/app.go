@@ -20,6 +20,7 @@ import (
 const onChangedForceExit = 123
 
 var NotModifiedError = errors.New("Config unchanged on server")
+var HandlersDir = "/usr/share/fioconfig/handlers/"
 
 type CryptoHandler interface {
 	Decrypt(value string) ([]byte, error)
@@ -169,7 +170,7 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 	}
 	if len(onChanged) > 0 {
 		binary := filepath.Clean(onChanged[0])
-		if a.unsafeHandlers || strings.HasPrefix(binary, "/usr/share/fioconfig/handlers/") {
+		if a.unsafeHandlers || strings.HasPrefix(binary, HandlersDir) {
 			slog.Info("Running on-change command", "file", fname, "args", onChanged)
 			cmd := exec.Command(onChanged[0], onChanged[1:]...)
 			cmd.Env = append(os.Environ(), "CONFIG_FILE="+fullpath)
