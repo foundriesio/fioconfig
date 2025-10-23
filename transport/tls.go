@@ -63,4 +63,3 @@ func loadCertLocal(cfg *sotatoml.AppConfig) (tls.Certificate, error) {
 	}
 	return tls.LoadX509KeyPair(certFile, keyFile)
 }
-
