@@ -59,7 +59,7 @@ func extract(c *cli.Context) error {
 		}
 	}
 	slog.Info("Extracting keys", "from", app.EncryptedConfig, "to", app.SecretsDir)
-	if err := app.Extract(); err != nil {
+	if _, err := app.Extract(); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			slog.Info("Encrypted config does not exist")
 		} else {
@@ -76,7 +76,7 @@ func checkin(c *cli.Context) error {
 	}
 
 	slog.Info("Checking in with server ...")
-	if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
+	if _, err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
 		return err
 	}
 	return nil
@@ -91,7 +91,7 @@ func daemon(c *cli.Context) error {
 	slog.Info("Running as daemon", "interval", c.Int("interval"))
 	for {
 		slog.Info("Checking in with server")
-		if err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
+		if _, err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
 			slog.Error("Check-in failed", "error", err)
 		}
 		time.Sleep(interval)

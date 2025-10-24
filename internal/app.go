@@ -107,10 +107,11 @@ func updateSecret(secretFile string, newContent []byte) (bool, error) {
 	return true, sotatoml.SafeWrite(secretFile, newContent)
 }
 
-func (a *App) extract(config configSnapshot) error {
+func (a *App) extract(config configSnapshot) (bool, error) {
+	configChanged := false
 	st, err := os.Stat(a.SecretsDir)
 	if err != nil {
-		return err
+		return configChanged, err
 	}
 
 	all_fname := make(map[string]bool)
@@ -120,45 +121,47 @@ func (a *App) extract(config configSnapshot) error {
 		fullpath := filepath.Join(a.SecretsDir, fname)
 		dirName := filepath.Dir(fullpath)
 		if err := os.MkdirAll(dirName, st.Mode()); err != nil {
-			return fmt.Errorf("Unable to create parent directory secret: %s - %w", fullpath, err)
+			return configChanged, fmt.Errorf("Unable to create parent directory secret: %s - %w", fullpath, err)
 		}
 		changed, err := updateSecret(fullpath, []byte(cfgFile.Value))
 		if err != nil {
-			return err
+			return configChanged, err
 		}
 		if changed {
+			configChanged = true
 			a.runOnChanged(fname, fullpath, cfgFile.OnChanged)
 		}
 	}
 
 	// Now, watch for file removals (compare with a previous version if present)
 	if config.prev == nil {
-		return nil
+		return configChanged, nil
 	}
 	for fname, cfgFile := range config.prev {
 		if _, ok := all_fname[fname]; ok {
 			continue
 		}
 		slog.Info("Removing file", "file", fname)
+		configChanged = true
 		fullpath := filepath.Join(a.SecretsDir, fname)
 		if err := os.Remove(fullpath); err != nil && !os.IsNotExist(err) {
-			return err
+			return configChanged, err
 		}
 		a.runOnChanged(fname, fullpath, cfgFile.OnChanged)
 	}
 	if err := DeleteEmptyDirs(a.SecretsDir); err != nil {
 		slog.Error("Unable to remove empty directories", "error", err)
 	}
-	return nil
+	return configChanged, nil
 }
 
-func (a *App) Extract() error {
+func (a *App) Extract() (bool, error) {
 	_, crypto := createClient(a.sota)
 	defer crypto.Close()
 
 	config, err := UnmarshallFile(crypto, a.EncryptedConfig, true)
 	if err != nil {
-		return err
+		return false, err
 	}
 	return a.extract(configSnapshot{nil, config})
 }
@@ -192,10 +195,9 @@ func (a *App) runOnChanged(fname string, fullpath string, onChanged []string) {
 	}
 }
 
-func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
+func (a *App) checkin(client *http.Client, crypto CryptoHandler) (configChanged bool, err error) {
 	headers := make(map[string]string)
 	var config configSnapshot
-	var err error
 
 	if config.prev, err = UnmarshallFile(nil, a.EncryptedConfig, false); err != nil {
 		var perr *os.PathError
@@ -210,41 +212,45 @@ func (a *App) checkin(client *http.Client, crypto CryptoHandler) error {
 
 	res, err := transport.HttpGet(client, a.configUrl, headers)
 	if err != nil {
-		return err // Unable to attempt request
+		return // Unable to attempt request
 	}
 
 	if res.StatusCode == 200 {
 		if config.next, err = UnmarshallBuffer(crypto, res.Body, true); err != nil {
-			return err
+			return
 		}
 
-		if err = a.extract(config); err != nil {
-			return err
+		if configChanged, err = a.extract(config); err != nil {
+			return
 		}
 		if err = sotatoml.SafeWrite(a.EncryptedConfig, res.Body); err != nil {
-			return err
+			return
 		}
 
-		modtime, err := time.Parse(time.RFC1123, res.Header.Get("Date"))
-		if err != nil {
-			slog.Warn("Unable to get modtime of config file, defaulting to 'now'", "error", err)
+		modtime, err2 := time.Parse(time.RFC1123, res.Header.Get("Date"))
+		if err2 != nil {
+			slog.Warn("Unable to get modtime of config file, defaulting to 'now'", "error", err2)
 			modtime = time.Now()
 		}
 		if err = os.Chtimes(a.EncryptedConfig, modtime, modtime); err != nil {
-			return fmt.Errorf("Unable to set modified time %s - %w", a.EncryptedConfig, err)
+			err = fmt.Errorf("Unable to set modified time %s - %w", a.EncryptedConfig, err)
+			return
 		}
-		return nil
+		return
 	} else if res.StatusCode == 304 {
 		slog.Info("Config on server has not changed")
-		return NotModifiedError
+		err = NotModifiedError
+		return
 	} else if res.StatusCode == 204 {
 		slog.Info("Device has no config defined on server")
-		return NotModifiedError
+		err = NotModifiedError
+		return
 	}
-	return fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, res.String())
+	err = fmt.Errorf("Unable to get %s - HTTP_%d: %s", a.configUrl, res.StatusCode, res.String())
+	return
 }
 
-func (a *App) CheckIn() error {
+func (a *App) CheckIn() (bool, error) {
 	client, crypto := createClient(a.sota)
 	defer crypto.Close()
 	callInitFunctions(a, client)

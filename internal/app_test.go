@@ -197,7 +197,7 @@ func assertNoFile(t *testing.T, path string) {
 
 func TestExtract(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
-		if err := app.Extract(); err != nil {
+		if _, err := app.Extract(); err != nil {
 			t.Fatal(err)
 		}
 
@@ -210,7 +210,7 @@ func TestExtract(t *testing.T) {
 
 		// Make sure files that don't change aren't updated
 		os.Remove(barChanged)
-		if err := app.Extract(); err != nil {
+		if _, err := app.Extract(); err != nil {
 			t.Fatal(err)
 		}
 		_, err := os.Stat(barChanged)
@@ -223,8 +223,10 @@ func TestExtract(t *testing.T) {
 func TestSafeHandler(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tempdir string) {
 		app.unsafeHandlers = false
-		if err := app.Extract(); err != nil {
+		if changed, err := app.Extract(); err != nil {
 			t.Fatal(err)
+		} else if !changed {
+			t.Fatal("Config change not detected")
 		}
 		barChanged := filepath.Join(tempdir, "bar-changed")
 		_, err := os.Stat(barChanged)
@@ -257,7 +259,9 @@ func TestHandlerExit(t *testing.T) {
 		buf, err = json.Marshal(config)
 		require.Nil(t, err)
 		require.Nil(t, os.WriteFile(app.EncryptedConfig, buf, 0o777))
-		require.Nil(t, app.Extract())
+		changed, err := app.Extract()
+		require.Nil(t, err)
+		require.True(t, changed)
 		require.True(t, called)
 	})
 }
@@ -270,10 +274,11 @@ func TestCheckBad(t *testing.T) {
 	testWrapper(t, doGet, func(app *App, client *http.Client, tempdir string) {
 		_, crypto := createClient(app.sota)
 		defer crypto.Close()
-		err := app.checkin(client, crypto)
+		changed, err := app.checkin(client, crypto)
 		if err == nil {
 			t.Fatal("Checkin should have gotten a 404")
 		}
+		require.False(t, changed)
 
 		if !strings.HasSuffix(strings.TrimSpace(err.Error()), "HTTP_404: 404 page not found") {
 			t.Fatalf("Unexpected response: '%s'", err)
@@ -306,7 +311,7 @@ func TestCheckCorruptedConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := app.checkin(client, crypto); err != nil {
+		if _, err := app.checkin(client, crypto); err != nil {
 			t.Fatal(err)
 		}
 
@@ -351,8 +356,10 @@ func TestCheckGood(t *testing.T) {
 		// Remove this file so we can be sure the check-in creates it
 		os.Remove(app.EncryptedConfig)
 
-		if err := app.checkin(client, crypto); err != nil {
+		if changed, err := app.checkin(client, crypto); err != nil {
 			t.Fatal(err)
+		} else if !changed {
+			t.Fatal("Config-change not detected")
 		}
 
 		foo := filepath.Join(tempdir, "foo")
@@ -380,13 +387,13 @@ func TestCheckGood(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 
 		// Now make sure the if-not-modified logic works
-		if err := app.checkin(client, crypto); err != NotModifiedError {
+		if _, err := app.checkin(client, crypto); err != NotModifiedError {
 			t.Fatal(err)
 		}
 
 		// Check that files removed on server are also removed on device and onChange is called
 		removeBar = true
-		if err := app.checkin(client, crypto); err != nil {
+		if _, err := app.checkin(client, crypto); err != nil {
 			t.Fatal(err)
 		}
 

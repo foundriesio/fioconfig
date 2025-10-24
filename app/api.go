@@ -21,8 +21,8 @@ func NewAppWithConfig(sota *sotatoml.AppConfig, secretsDir string, unsafeHandler
 
 // Extract extracts secrets from the encrypted configuration into the secrets directory.
 // must be called once. A common way to do this is a systemd "oneshot" service after
-// NetworkManager is up.
-func (a *App) Extract() error {
+// NetworkManager is up. It returns true if a config change was detected.
+func (a *App) Extract() (bool, error) {
 	return (*internal.App)(a).Extract()
 }
 
@@ -30,7 +30,8 @@ func (a *App) Extract() error {
 // are changes, it applies them locally. If the config on the server is unchanged,
 // it returns NotModifiedError. This function also will try and run any pending
 // "init" functions required by Fioconfig that have not yet been run.
-func (a *App) CheckIn() error {
+// It returns true if a config change was detected.
+func (a *App) CheckIn() (bool, error) {
 	return (*internal.App)(a).CheckIn()
 }
 
