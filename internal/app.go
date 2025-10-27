@@ -160,7 +160,7 @@ func (a *App) Extract() (bool, error) {
 	defer crypto.Close()
 
 	config, err := UnmarshallFile(crypto, a.EncryptedConfig, true)
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, err
 	}
 	return a.extract(configSnapshot{nil, config})
