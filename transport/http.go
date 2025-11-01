@@ -96,11 +96,15 @@ func HttpDo(client *http.Client, method, url string, headers map[string]string, 
 	var res *HttpRes
 	for _, delay := range []int{0, 1, 2, 5, 13, 30} {
 		if delay != 0 {
-			slog.Warn("HTTP request failed, retrying", "url", url, "method", method, "delay", delay, "status", res.StatusCode, "error", err)
+			var status int
+			if res != nil {
+				status = res.StatusCode
+			}
+			slog.Warn("HTTP request failed, retrying", "url", url, "method", method, "delay", delay, "status", status, "error", err)
 			time.Sleep(time.Second * time.Duration(delay))
 		}
 		res, err = httpDoOnce(client, method, url, headers, data)
-		if err == nil && res.StatusCode != 0 && res.StatusCode < 500 {
+		if err == nil && res != nil && res.StatusCode != 0 && res.StatusCode < 500 {
 			break
 		}
 	}
