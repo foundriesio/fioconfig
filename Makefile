@@ -18,6 +18,7 @@ bin/fioconfig-%: FORCE
 	GOARCH=$(shell echo $* | cut -f2 -d\-) \
 		go build -tags vpn $(LDFLAGS) -o $@ main.go
 
+.PHONY: bin/fioconfig-nopkcs11
 bin/fioconfig-nopkcs11:
 		CGO_ENABLED=0 go build -tags vpn,disable_pkcs11 $(LDFLAGS) -o $@ main.go
 
