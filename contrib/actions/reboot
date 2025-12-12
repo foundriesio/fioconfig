@@ -1,0 +1,5 @@
+#!/bin/sh -ex
+
+# Schedule a reboot in one minute to give fioconfig the chance to create a
+# TestResult on the backend so the operator will know the device is rebooting.
+systemctl reboot --when="+5 seconds"
