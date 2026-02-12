@@ -16,6 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/foundriesio/fioconfig/sotatoml"
 	"go.mozilla.org/pkcs7"
@@ -82,13 +83,17 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	if err != nil {
 		return fmt.Errorf("Unable to read certificate response body: HTTP_%d - %w", res.StatusCode, err)
 	}
-	if res.StatusCode != 201 {
+
+	// Older version of foundriesio/estserver returned the status code 201, which is also required by older versions of foundriesio/fioconfig
+	// The spec requires status code 200.
+	if res.StatusCode != 200 && res.StatusCode != 201 {
 		return fmt.Errorf("Unable to obtain new certificate: HTTP_%d - %s", res.StatusCode, string(buf))
 	}
 	ct := res.Header.Get("content-type")
-	if ct != "application/pkcs7-mime" {
+	if !strings.HasPrefix(ct, "application/pkcs7-mime") {
 		return fmt.Errorf("Unexpected content-type return in certificate response: %s", ct)
 	}
+
 	estCert, err := decodeEstResponse(string(buf))
 	if err != nil {
 		return err
