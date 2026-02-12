@@ -72,7 +72,7 @@ func httpDoOnce(client *http.Client, method, url string, headers map[string]stri
 		req.Header.Add(k, v)
 	}
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Add("User-Agent", "fioconfig-client/2")
+		req.Header.Add("User-Agent", "fioconfig-client/3")
 	}
 	if req.Header.Get("Content-Type") == "" {
 		req.Header.Add("Content-Type", "application/json")
