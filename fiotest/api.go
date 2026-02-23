@@ -25,16 +25,14 @@ func NewApi(client *http.Client, fiotestUrl string) *Api {
 }
 
 func (a Api) Create(name, testId string) (*Test, error) {
-	// Hard-coded to group all tests by the same Target in the backend
-	headers := map[string]string{"x-ats-target": "fiocofig-action"}
-
 	type testbody struct {
 		Name   string `json:"name"`
+		Target string `json:"target"`
 		TestId string `json:"test-id"`
 	}
-	body := testbody{Name: name, TestId: testId}
+	body := testbody{Name: name, Target: "fioconfig-action", TestId: testId}
 
-	res, err := transport.HttpDo(a.client, http.MethodPost, a.baseUrl, headers, body)
+	res, err := transport.HttpDo(a.client, http.MethodPost, a.baseUrl, nil, body)
 	if err != nil {
 		return nil, err
 	} else if res.StatusCode != 201 {
