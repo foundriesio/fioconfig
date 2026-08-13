@@ -51,3 +51,8 @@ fi
 if systemctl is-enabled --quiet ${SOTA_CLIENT} ; then
 	systemctl restart ${SOTA_CLIENT}
 fi
+
+if [ "$1" = "restart-fioconfig" ] ; then
+	echo "Restarting fioconfig"
+	exit 123
+fi
