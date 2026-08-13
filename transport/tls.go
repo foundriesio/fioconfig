@@ -5,9 +5,27 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/foundriesio/fioconfig/sotatoml"
 )
+
+// importPath resolves a path read from the [import] block. When the
+// configured value is relative, it is joined onto import.base_path
+// the same way lmp-device-register and the aktualizr clients treat
+// these keys. Without this fix, relative paths fall back to the
+// process CWD and TLS fails with a confusing missing-file error.
+func importPath(cfg *sotatoml.AppConfig, key string) string {
+	p := cfg.Get(key)
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	base := cfg.Get("import.base_path")
+	if base == "" {
+		return p
+	}
+	return filepath.Join(base, p)
+}
 
 func GetTlsConfig(cfg *sotatoml.AppConfig) (*tls.Config, interface{}, error) {
 	if val := cfg.Get("tls.ca_source"); val != "file" {
@@ -15,7 +33,7 @@ func GetTlsConfig(cfg *sotatoml.AppConfig) (*tls.Config, interface{}, error) {
 	}
 
 	caCertPool := x509.NewCertPool()
-	caFile := cfg.Get("import.tls_cacert_path")
+	caFile := importPath(cfg, "import.tls_cacert_path")
 	if len(caFile) == 0 {
 		return nil, nil, fmt.Errorf("import.tls_cacert_path not configured")
 	}
@@ -53,8 +71,8 @@ func GetTlsConfig(cfg *sotatoml.AppConfig) (*tls.Config, interface{}, error) {
 }
 
 func loadCertLocal(cfg *sotatoml.AppConfig) (tls.Certificate, error) {
-	keyFile := cfg.Get("import.tls_pkey_path")
-	certFile := cfg.Get("import.tls_clientcert_path")
+	keyFile := importPath(cfg, "import.tls_pkey_path")
+	certFile := importPath(cfg, "import.tls_clientcert_path")
 	if len(keyFile) == 0 {
 		return tls.Certificate{}, fmt.Errorf("import.tls_pkey_path not specified")
 	}
