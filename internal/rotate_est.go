@@ -189,18 +189,20 @@ func verifyNewCert(curCert, newCert *x509.Certificate) error {
 	if !bytes.Equal(curCert.RawSubject, newCert.RawSubject) {
 		return errors.New("New cert's subject does not match current cert's")
 	}
-	foundDigitalSig := false
+
+	foundDigitalSig := newCert.KeyUsage & x509.KeyUsageDigitalSignature != 0
 	foundClientAuth := false
-	for _, ext := range newCert.Extensions {
-		if !foundDigitalSig && ext.Id.Equal(oidKeyUsage) {
-			foundDigitalSig = bytes.Equal(ext.Value, asn1DigitalSignature)
-		} else if !foundClientAuth && ext.Id.Equal(oidExtendedKeyUsage) {
-			foundClientAuth = bytes.Equal(ext.Value, asn1TlsWebClientAuth)
+
+	for _, eku := range newCert.ExtKeyUsage {
+		if eku == x509.ExtKeyUsageClientAuth {
+			foundClientAuth = true
+			break
 		}
 	}
 
 	if foundDigitalSig && foundClientAuth {
 		return nil
 	}
+
 	return errors.New("Missing required extensions for Digital Signature and/or TLS Web Client Authentication")
 }
