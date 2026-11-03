@@ -13,7 +13,10 @@ import (
 
 	"github.com/coreos/go-systemd/v22/dbus"
 	"github.com/foundriesio/fioconfig/sotatoml"
+	"golang.org/x/sys/unix"
 )
+
+var RotationInProgressError = errors.New("Another rotation is in progress")
 
 type BaseState struct {
 	// A unique ID to identify this operation - RotationId inside a file for backward compatibility
@@ -52,6 +55,7 @@ type stateContext[T state] struct {
 	crypto    *EciesCrypto
 	eventSync EventSync
 	cienv     bool
+	restored  bool
 }
 
 type stateStep[T state] interface {
@@ -114,12 +118,59 @@ func (h *stateContext[T]) Restore() (loaded bool) {
 	if err = json.Unmarshal(bytes, &h.State); err != nil {
 		slog.Error("Unable to unmarshall state file", "file", h.stateFile, "error", err)
 	}
+	h.restored = true
 	return true
 }
 
+// lock stops other fioconfig processes from working on the state file while
+// we do. The lock goes away with the file, so a crash can't leave it behind.
+func (h *stateContext[T]) lock() (*os.File, error) {
+	f, err := os.OpenFile(h.stateFile+".lock", os.O_RDWR|os.O_CREATE, 0o640)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to create lock file: %w", err)
+	}
+	if err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		f.Close()
+		if errors.Is(err, unix.EWOULDBLOCK) {
+			return nil, RotationInProgressError
+		}
+		return nil, fmt.Errorf("Unable to lock %s: %w", f.Name(), err)
+	}
+	return f, nil
+}
+
+// checkNotClobbering makes sure a new operation doesn't throw away one that
+// went further than its first step. After that the server may know about the
+// new key, and the only copy of its private key can be in the state file.
+func (h *stateContext[T]) checkNotClobbering() error {
+	if h.restored {
+		return nil
+	}
+	bytes, err := os.ReadFile(h.stateFile)
+	if err != nil {
+		return nil
+	}
+	var existing BaseState
+	if err = json.Unmarshal(bytes, &existing); err != nil {
+		return nil
+	}
+	if existing.StepIdx > 0 {
+		return fmt.Errorf("%w: %s got to step %d", RotationInProgressError, existing.CorrelationId, existing.StepIdx)
+	}
+	return nil
+}
+
 func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool) error {
+	lock, err := h.lock()
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err = h.checkNotClobbering(); err != nil {
+		return err
+	}
+
 	h.eventSync.SetCorrelationId(h.State.GetCorrelationId())
-	var err error
 	defer h.eventSync.Notify(completeEvent, err)
 	h.eventSync.Notify(startEvent, nil)
 
