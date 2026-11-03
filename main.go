@@ -142,6 +142,24 @@ func renewCert(c *cli.Context) error {
 	return err
 }
 
+func abortRotation(c *cli.Context) error {
+	app, err := NewApp(c)
+	if err != nil {
+		return err
+	}
+	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
+	handler := internal.RestoreCertRotationHandler(app, stateFile)
+	if handler == nil {
+		slog.Info("No certificate rotation to abort")
+		return nil
+	}
+	if err = handler.Abort(c.Bool("force")); err != nil {
+		return err
+	}
+	slog.Info("Certificate rotation aborted", "state", stateFile+".failed")
+	return nil
+}
+
 func runAndReport(c *cli.Context) error {
 	testId := c.String("id")
 	testName := c.String("name")
@@ -243,6 +261,19 @@ func main() {
 						Name:  "pkcs11-cert-ids",
 						Value: "03,09",
 						Usage: "The two pkcs11 slot IDs to use for client certificates",
+					},
+				},
+			},
+			{
+				Name:  "abort-rotation",
+				Usage: "Give up on an unfinished certificate rotation",
+				Action: func(c *cli.Context) error {
+					return abortRotation(c)
+				},
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "force",
+						Usage: "Abort even though the server may already know about the new key",
 					},
 				},
 			},
