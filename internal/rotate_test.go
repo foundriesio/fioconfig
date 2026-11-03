@@ -206,6 +206,49 @@ func TestRotationRestart(t *testing.T) {
 	})
 }
 
+func TestRotationAbort(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		stuckAt := func(step int) *CertRotationHandler {
+			state := fmt.Sprintf(`{"RotationId":"certs-1","StepIdx":%d}`, step)
+			require.Nil(t, os.WriteFile(stateFile, []byte(state), 0o640))
+			return RestoreCertRotationHandler(app, stateFile)
+		}
+		exists := func(name string) bool {
+			_, err := os.Stat(name)
+			return err == nil
+		}
+
+		// Nothing has left the device yet
+		require.Nil(t, stuckAt(0).Abort(false))
+		require.False(t, exists(stateFile))
+		require.True(t, exists(stateFile+".failed"))
+
+		// The server may know about the new key
+		for _, step := range []int{1, 2, 3} {
+			handler := stuckAt(step)
+			require.NotNil(t, handler.Abort(false))
+			require.True(t, exists(stateFile))
+			require.Nil(t, handler.Abort(true))
+			require.False(t, exists(stateFile))
+		}
+
+		// The server's config can only be read with the new key
+		handler := stuckAt(4)
+		require.NotNil(t, handler.Abort(false))
+		require.NotNil(t, handler.Abort(true))
+		require.True(t, exists(stateFile))
+
+		// Don't pull the rug out from under a process that is working on it
+		other, err := handler.lock()
+		require.Nil(t, err)
+		handler = stuckAt(0)
+		require.ErrorIs(t, handler.Abort(false), RotationInProgressError)
+		other.Close()
+		require.True(t, exists(stateFile))
+	})
+}
+
 func TestRotationLock(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
 		stateFile := filepath.Join(tmpdir, "rotate.state")

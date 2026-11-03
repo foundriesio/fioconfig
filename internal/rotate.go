@@ -1,7 +1,9 @@
 package internal
 
 import (
+	"fmt"
 	"log/slog"
+	"os"
 )
 
 type CertRotationState struct {
@@ -91,4 +93,28 @@ func (h *CertRotationHandler) ResumeRotation(online bool) error {
 	}
 	slog.Warn("Incomplete certificate rotation state found. Will attempt to complete")
 	return h.Rotate()
+}
+
+// Abort gives up on a rotation by hand. This is only safe early on. The state
+// file is set aside rather than deleted, but a rotation that got past its first
+// step may have told the server about a key that only the state file has. Once
+// the server's copy of the configuration is using the new key there is no way
+// back.
+func (h *CertRotationHandler) Abort(force bool) error {
+	lock, err := h.lock()
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+
+	step := h.State.GetCurrentStep()
+	for idx, s := range h.steps {
+		if _, ok := s.(deviceCfgStep); ok && step > idx {
+			return fmt.Errorf("Rotation %s is too far along to abort. The server is using its new key", h.State.CorrelationId)
+		}
+	}
+	if step > 0 && !force {
+		return fmt.Errorf("Rotation %s got to step %d. The server may already know about its new key. Use --force to abort anyway", h.State.CorrelationId, step)
+	}
+	return os.Rename(h.stateFile, h.stateFile+".failed")
 }
