@@ -112,6 +112,84 @@ func TestRotationHandler(t *testing.T) {
 	})
 }
 
+func TestRotationLock(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+		handler.eventSync = NoOpEventSync{}
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", errors.New("Step shouldn't have been run")},
+		}
+
+		// Pretend another process is working on the rotation
+		other, err := handler.lock()
+		require.Nil(t, err)
+		require.ErrorIs(t, handler.Rotate(), RotationInProgressError)
+		other.Close()
+
+		_, err = os.Stat(stateFile)
+		require.True(t, os.IsNotExist(err))
+
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+		}
+		require.Nil(t, handler.Rotate())
+	})
+}
+
+func TestRotationNotClobbered(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "first-est-server")
+		handler.eventSync = NoOpEventSync{}
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+			testStep{"step2", errors.New("2")},
+		}
+		require.NotNil(t, handler.Rotate())
+		require.Equal(t, 1, handler.State.StepIdx)
+
+		// A new rotation can't replace one that got past its first step
+		handler = NewCertRotationHandler(app, stateFile, "second-est-server")
+		handler.eventSync = NoOpEventSync{}
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+		}
+		require.ErrorIs(t, handler.Rotate(), RotationInProgressError)
+		handler = RestoreCertRotationHandler(app, stateFile)
+		require.Equal(t, "first-est-server", handler.State.EstServer)
+		require.Equal(t, 1, handler.State.StepIdx)
+
+		// It can replace one that never got past its first step
+		require.Nil(t, os.Remove(stateFile))
+		handler = NewCertRotationHandler(app, stateFile, "first-est-server")
+		handler.eventSync = NoOpEventSync{}
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", errors.New("1")},
+		}
+		require.NotNil(t, handler.Rotate())
+		require.Equal(t, 0, handler.State.StepIdx)
+
+		handler = NewCertRotationHandler(app, stateFile, "second-est-server")
+		handler.eventSync = NoOpEventSync{}
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+		}
+		require.Nil(t, handler.Rotate())
+
+		bytes, err := os.ReadFile(stateFile + ".completed")
+		require.Nil(t, err)
+		var state CertRotationState
+		require.Nil(t, json.Unmarshal(bytes, &state))
+		require.Equal(t, "second-est-server", state.EstServer)
+	})
+}
+
 func TestEst(t *testing.T) {
 	WithEstServer(t, func(tc testClient) {
 		testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
