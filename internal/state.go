@@ -162,7 +162,7 @@ func (h *stateContext[T]) checkNotClobbering() error {
 	return nil
 }
 
-func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool) error {
+func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool) (err error) {
 	lock, err := h.lock()
 	if err != nil {
 		return err
@@ -173,8 +173,16 @@ func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool
 	}
 
 	h.eventSync.SetCorrelationId(h.State.GetCorrelationId())
-	defer h.eventSync.Notify(completeEvent, err)
 	h.eventSync.Notify(startEvent, nil)
+	defer func() {
+		h.eventSync.Notify(completeEvent, err)
+		if restart && err == nil {
+			// Restart aklite and fioconfig *after* being "complete".
+			// Otherwise, we could wind up in a loop of:
+			// try-to-complete-rotation, restart-ourself before marking complete.
+			h.RestartServices()
+		}
+	}()
 
 	// Before we even start - we should save our initial state (ie EstServer)
 	// and also make sure we *can* save our state.
@@ -199,14 +207,6 @@ func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool
 		}
 	}
 	err = os.Rename(h.stateFile, h.stateFile+".completed")
-
-	if restart && err == nil {
-		// Restart aklite and fioconfig *after* being "complete".
-		// Otherwise, we could wind up in a loop of:
-		// try-to-complete-rotation, restart-ourself before marking complete.
-		h.RestartServices()
-	}
-
 	return err
 }
 
