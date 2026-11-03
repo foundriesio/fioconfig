@@ -34,14 +34,15 @@ func NewApp(c *cli.Context) (*internal.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.Command.Name == "renew-cert" {
+	if c.Command.Name != "extract" {
+		// Resuming a rotation needs the network and can fail for a long time.
+		// Only the daemon does it. See resumeRotation.
 		return app, nil
 	}
 	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
 	handler := internal.RestoreCertRotationHandler(app, stateFile)
 	if handler != nil {
-		online := c.Command.Name != "extract"
-		err = handler.ResumeRotation(online)
+		err = handler.ResumeRotation(false)
 	}
 	return app, err
 }
@@ -82,6 +83,20 @@ func checkin(c *cli.Context) error {
 	return nil
 }
 
+// resumeRotation tries to finish a certificate rotation that was interrupted
+// or failed. A failure is only logged. The daemon has to keep checking in or a
+// corrected configuration could never reach a device that is stuck.
+func resumeRotation(app *internal.App) {
+	stateFile := filepath.Join(app.StorageDir, "cert-rotation.state")
+	handler := internal.RestoreCertRotationHandler(app, stateFile)
+	if handler == nil {
+		return
+	}
+	if err := handler.ResumeRotation(true); err != nil {
+		slog.Error("Unable to resume certificate rotation", "error", err)
+	}
+}
+
 func daemon(c *cli.Context) error {
 	interval := time.Second * time.Duration(c.Int("interval"))
 	app, err := NewApp(c)
@@ -94,6 +109,8 @@ func daemon(c *cli.Context) error {
 		if _, err := app.CheckIn(); err != nil && !errors.Is(err, internal.NotModifiedError) {
 			slog.Error("Check-in failed", "error", err)
 		}
+		// Check in first. A new configuration might replace the rotation.
+		resumeRotation(app)
 		time.Sleep(interval)
 	}
 }
