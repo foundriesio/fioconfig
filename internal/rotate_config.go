@@ -140,6 +140,9 @@ func encryptConfig(crypto *EciesCrypto, config map[string]*ConfigFile) ([]byte, 
 func getCryptoHandler(h *certRotationContext) (*EciesCrypto, error) {
 	if !h.usePkcs11() {
 		block, _ := pem.Decode([]byte(h.State.NewKey))
+		if block == nil {
+			return nil, errors.New("Unable to decode new private key")
+		}
 		key, err := x509.ParseECPrivateKey(block.Bytes)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to parse new private key: %w", err)
