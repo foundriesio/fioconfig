@@ -112,6 +112,52 @@ func TestRotationHandler(t *testing.T) {
 	})
 }
 
+// captureStdout returns what f prints to stdout
+func captureStdout(t *testing.T, f func()) string {
+	r, w, err := os.Pipe()
+	require.Nil(t, err)
+	orig := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+
+	f()
+	require.Nil(t, w.Close())
+	out, err := io.ReadAll(r)
+	require.Nil(t, err)
+	return string(out)
+}
+
+func TestRotationRestart(t *testing.T) {
+	// What a restart prints when it is skipped for CI
+	const restarted = "Skipping systemctl restarts for CI"
+
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		rotate := func() error {
+			handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+			handler.eventSync = NoOpEventSync{}
+			handler.cienv = true
+			handler.steps = []certRotationStep{
+				testStep{"step1", nil},
+			}
+			return handler.Rotate()
+		}
+
+		var err error
+		out := captureStdout(t, func() { err = rotate() })
+		require.Nil(t, err)
+		require.Contains(t, out, restarted)
+
+		// If we can't mark the rotation as complete, we'd only resume it
+		// again after the restart.
+		require.Nil(t, os.Remove(stateFile+".completed"))
+		require.Nil(t, os.MkdirAll(filepath.Join(stateFile+".completed", "blocker"), 0o750))
+		out = captureStdout(t, func() { err = rotate() })
+		require.NotNil(t, err)
+		require.NotContains(t, out, restarted)
+	})
+}
+
 func TestRotationLock(t *testing.T) {
 	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
 		stateFile := filepath.Join(tmpdir, "rotate.state")
