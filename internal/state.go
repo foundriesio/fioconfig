@@ -200,7 +200,7 @@ func (h *stateHandler[T]) execute(startEvent, completeEvent string, restart bool
 	}
 	err = os.Rename(h.stateFile, h.stateFile+".completed")
 
-	if restart {
+	if restart && err == nil {
 		// Restart aklite and fioconfig *after* being "complete".
 		// Otherwise, we could wind up in a loop of:
 		// try-to-complete-rotation, restart-ourself before marking complete.
