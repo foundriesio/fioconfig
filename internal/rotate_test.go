@@ -205,6 +205,43 @@ func TestEst(t *testing.T) {
 	})
 }
 
+func TestEstBadClientCert(t *testing.T) {
+	WithEstServer(t, func(tc testClient) {
+		testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+			stateFile := filepath.Join(tmpdir, "rotate.state")
+			handler := NewCertRotationHandler(app, stateFile, tc.srv.URL+"/.well-known/est")
+
+			// Without this the step used to "succeed" without making a key
+			tlsCfg := handler.client.Transport.(*http.Transport).TLSClientConfig
+			tlsCfg.Certificates[0].Certificate = [][]byte{[]byte("not a certificate")}
+
+			require.NotNil(t, estStep{}.Execute(&handler.stateContext))
+			require.Equal(t, "", handler.State.NewKey)
+		})
+	})
+}
+
+func TestEstEmptyResponse(t *testing.T) {
+	envelope, err := pkcs7.NewSignedData(nil)
+	require.Nil(t, err)
+	bytes, err := envelope.Finish()
+	require.Nil(t, err)
+
+	_, err = decodeEstResponse(base64.StdEncoding.EncodeToString(bytes))
+	require.NotNil(t, err)
+}
+
+func TestRotateBadNewKey(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+
+		_, err := getCryptoHandler(&handler.stateContext)
+		require.NotNil(t, err)
+		require.NotNil(t, fullCfgStep{}.Execute(&handler.stateContext))
+	})
+}
+
 func TestRotateFullConfig(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.Nil(t, err)
