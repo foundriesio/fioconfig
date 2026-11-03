@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,15 @@ func (t testStep) Name() string {
 
 func (t testStep) Execute(_ *certRotationContext) error {
 	return t.execError
+}
+
+type testEventSync struct {
+	NoOpEventSync
+	events []string
+}
+
+func (s *testEventSync) Notify(name string, err error) {
+	s.events = append(s.events, fmt.Sprintf("%s ok=%v", name, err == nil))
 }
 
 type testClient struct {
@@ -109,6 +119,44 @@ func TestRotationHandler(t *testing.T) {
 		handler.State.StepIdx = 1
 		require.Nil(t, handler.Rotate())
 		require.Equal(t, 2, handler.State.StepIdx)
+	})
+}
+
+func TestRotationEvents(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+		events := &testEventSync{}
+		handler.eventSync = events
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+			testStep{"step2", errors.New("2")},
+		}
+
+		// The completed event used to claim success no matter what
+		require.NotNil(t, handler.Rotate())
+		require.Equal(t, []string{
+			"CertRotationStarted ok=true",
+			"step1 ok=true",
+			"step2 ok=false",
+			"CertRotationCompleted ok=false",
+		}, events.events)
+
+		events = &testEventSync{}
+		handler = RestoreCertRotationHandler(app, stateFile)
+		handler.eventSync = events
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+			testStep{"step2", nil},
+		}
+		require.Nil(t, handler.Rotate())
+		require.Equal(t, []string{
+			"CertRotationStarted ok=true",
+			"step2 ok=true",
+			"CertRotationCompleted ok=true",
+		}, events.events)
 	})
 }
 
