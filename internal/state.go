@@ -108,15 +108,17 @@ func (h *stateContext[T]) Save() error {
 func (h *stateContext[T]) Restore() (loaded bool) {
 	bytes, err := os.ReadFile(h.stateFile)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return false
-		} else {
-			// Looks like we started a rotation, we should try and finish it
+		if !errors.Is(err, os.ErrNotExist) {
 			slog.Error("Unable to read state file", "file", h.stateFile, "error", err)
 		}
+		return false
 	}
 	if err = json.Unmarshal(bytes, &h.State); err != nil {
+		// We can't tell how far this rotation got, so we don't resume it. The
+		// file stays where it is. It could hold the only copy of a new private
+		// key.
 		slog.Error("Unable to unmarshall state file", "file", h.stateFile, "error", err)
+		return false
 	}
 	h.restored = true
 	return true
