@@ -242,6 +242,20 @@ func TestRotateBadNewKey(t *testing.T) {
 	})
 }
 
+func TestRotationCorruptState(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		require.Nil(t, os.WriteFile(stateFile, []byte(`{"RotationId": "certs-1", "StepIdx": 3, "NewK`), 0o640))
+
+		// We can't tell how far it got, so it isn't resumed. It might hold
+		// the only copy of a private key, so it must not go away either.
+		require.Nil(t, RestoreCertRotationHandler(app, stateFile))
+		bytes, err := os.ReadFile(stateFile)
+		require.Nil(t, err)
+		require.Equal(t, `{"RotationId": "certs-1", "StepIdx": 3, "NewK`, string(bytes))
+	})
+}
+
 func TestRotateFullConfig(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.Nil(t, err)
