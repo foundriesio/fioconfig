@@ -16,6 +16,17 @@ echo "Command ID is ${cmd_id}"
 capture=$(cat ${CONFIG_FILE} | grep COMMAND_CAPTURE | cut -d= -f2)
 
 action=$1
+# Validate before using the action in either an executable or state-file path.
+case "${action}" in
+	''|.|..|*[!a-zA-Z0-9_.-]*)
+		echo "Invalid action"
+		if [ "${capture}" = "1" ]; then
+			# Use a safe report name; the supplied name may be rejected by the server.
+			"${FIOCONFIG_BIN}" run-and-report --id "${cmd_id}" --name invalid-action /bin/sh -c 'echo "Invalid action"; exit 1'
+		fi
+		exit 1
+		;;
+esac
 active_file="${STORAGE_DIR}/oneshot.${action}.state"
 completed_file="${active_file}.completed"
 
