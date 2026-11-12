@@ -41,7 +41,7 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	tlsCert := handler.client.Transport.(*http.Transport).TLSClientConfig.Certificates[0]
 	cert, err := x509.ParseCertificate(tlsCert.Certificate[0])
 	if err != nil {
-		return nil
+		return fmt.Errorf("Unable to parse current client certificate: %w", err)
 	}
 
 	var signer crypto.Signer
@@ -79,6 +79,7 @@ func (s estStep) Execute(handler *certRotationContext) error {
 	if err != nil {
 		return fmt.Errorf("Unable to submit certificate signing request: %w", err)
 	}
+	defer res.Body.Close() //nolint:errcheck
 	buf, err := io.ReadAll(res.Body)
 	if err != nil {
 		return fmt.Errorf("Unable to read certificate response body: HTTP_%d - %w", res.StatusCode, err)
@@ -181,6 +182,9 @@ func decodeEstResponse(estResponse string) (*x509.Certificate, error) {
 	p7, err := pkcs7.Parse(bytes)
 	if err != nil {
 		return nil, fmt.Errorf("Invalid pkcs7 data in EST response: %w", err)
+	}
+	if len(p7.Certificates) == 0 {
+		return nil, errors.New("EST response does not include a certificate")
 	}
 	return p7.Certificates[0], nil
 }

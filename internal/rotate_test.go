@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,15 @@ func (t testStep) Name() string {
 
 func (t testStep) Execute(_ *certRotationContext) error {
 	return t.execError
+}
+
+type testEventSync struct {
+	NoOpEventSync
+	events []string
+}
+
+func (s *testEventSync) Notify(name string, err error) {
+	s.events = append(s.events, fmt.Sprintf("%s ok=%v", name, err == nil))
 }
 
 type testClient struct {
@@ -109,6 +119,133 @@ func TestRotationHandler(t *testing.T) {
 		handler.State.StepIdx = 1
 		require.Nil(t, handler.Rotate())
 		require.Equal(t, 2, handler.State.StepIdx)
+	})
+}
+
+func TestRotationEvents(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+		events := &testEventSync{}
+		handler.eventSync = events
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+			testStep{"step2", errors.New("2")},
+		}
+
+		// The completed event used to claim success no matter what
+		require.NotNil(t, handler.Rotate())
+		require.Equal(t, []string{
+			"CertRotationStarted ok=true",
+			"step1 ok=true",
+			"step2 ok=false",
+			"CertRotationCompleted ok=false",
+		}, events.events)
+
+		events = &testEventSync{}
+		handler = RestoreCertRotationHandler(app, stateFile)
+		handler.eventSync = events
+		handler.cienv = true
+		handler.steps = []certRotationStep{
+			testStep{"step1", nil},
+			testStep{"step2", nil},
+		}
+		require.Nil(t, handler.Rotate())
+		require.Equal(t, []string{
+			"CertRotationStarted ok=true",
+			"step2 ok=true",
+			"CertRotationCompleted ok=true",
+		}, events.events)
+	})
+}
+
+// captureStdout returns what f prints to stdout
+func captureStdout(t *testing.T, f func()) string {
+	r, w, err := os.Pipe()
+	require.Nil(t, err)
+	orig := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+
+	f()
+	require.Nil(t, w.Close())
+	out, err := io.ReadAll(r)
+	require.Nil(t, err)
+	return string(out)
+}
+
+func TestRotationRestart(t *testing.T) {
+	// What a restart prints when it is skipped for CI
+	const restarted = "Skipping systemctl restarts for CI"
+
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		rotate := func() error {
+			handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+			handler.eventSync = NoOpEventSync{}
+			handler.cienv = true
+			handler.steps = []certRotationStep{
+				testStep{"step1", nil},
+			}
+			return handler.Rotate()
+		}
+
+		var err error
+		out := captureStdout(t, func() { err = rotate() })
+		require.Nil(t, err)
+		require.Contains(t, out, restarted)
+
+		// If we can't mark the rotation as complete, we'd only resume it
+		// again after the restart.
+		require.Nil(t, os.Remove(stateFile+".completed"))
+		require.Nil(t, os.MkdirAll(filepath.Join(stateFile+".completed", "blocker"), 0o750))
+		out = captureStdout(t, func() { err = rotate() })
+		require.NotNil(t, err)
+		require.NotContains(t, out, restarted)
+	})
+}
+
+func TestRotationAbort(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		stuckAt := func(step int) *CertRotationHandler {
+			state := fmt.Sprintf(`{"RotationId":"certs-1","StepIdx":%d}`, step)
+			require.Nil(t, os.WriteFile(stateFile, []byte(state), 0o640))
+			return RestoreCertRotationHandler(app, stateFile)
+		}
+		exists := func(name string) bool {
+			_, err := os.Stat(name)
+			return err == nil
+		}
+
+		// Nothing has left the device yet
+		require.Nil(t, stuckAt(0).Abort(false))
+		require.False(t, exists(stateFile))
+		require.True(t, exists(stateFile+".failed"))
+
+		// The server may know about the new key
+		for _, step := range []int{1, 2, 3} {
+			handler := stuckAt(step)
+			require.NotNil(t, handler.Abort(false))
+			require.True(t, exists(stateFile))
+			require.Nil(t, handler.Abort(true))
+			require.False(t, exists(stateFile))
+		}
+
+		// The server's config can only be read with the new key
+		handler := stuckAt(4)
+		require.NotNil(t, handler.Abort(false))
+		require.NotNil(t, handler.Abort(true))
+		require.True(t, exists(stateFile))
+
+		// Don't pull the rug out from under a process that is working on it
+		other, err := handler.lock()
+		require.Nil(t, err)
+		handler = stuckAt(0)
+		require.ErrorIs(t, handler.Abort(false), RotationInProgressError)
+		other.Close()
+		require.True(t, exists(stateFile))
 	})
 }
 
@@ -202,6 +339,57 @@ func TestEst(t *testing.T) {
 			require.True(t, len(handler.State.NewCert) > 0)
 			require.True(t, len(handler.State.NewKey) > 0)
 		})
+	})
+}
+
+func TestEstBadClientCert(t *testing.T) {
+	WithEstServer(t, func(tc testClient) {
+		testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+			stateFile := filepath.Join(tmpdir, "rotate.state")
+			handler := NewCertRotationHandler(app, stateFile, tc.srv.URL+"/.well-known/est")
+
+			// Without this the step used to "succeed" without making a key
+			tlsCfg := handler.client.Transport.(*http.Transport).TLSClientConfig
+			tlsCfg.Certificates[0].Certificate = [][]byte{[]byte("not a certificate")}
+
+			require.NotNil(t, estStep{}.Execute(&handler.stateContext))
+			require.Equal(t, "", handler.State.NewKey)
+		})
+	})
+}
+
+func TestEstEmptyResponse(t *testing.T) {
+	envelope, err := pkcs7.NewSignedData(nil)
+	require.Nil(t, err)
+	bytes, err := envelope.Finish()
+	require.Nil(t, err)
+
+	_, err = decodeEstResponse(base64.StdEncoding.EncodeToString(bytes))
+	require.NotNil(t, err)
+}
+
+func TestRotateBadNewKey(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		handler := NewCertRotationHandler(app, stateFile, "est-server-doesn't-matter")
+
+		_, err := getCryptoHandler(&handler.stateContext)
+		require.NotNil(t, err)
+		require.NotNil(t, fullCfgStep{}.Execute(&handler.stateContext))
+	})
+}
+
+func TestRotationCorruptState(t *testing.T) {
+	testWrapper(t, nil, func(app *App, client *http.Client, tmpdir string) {
+		stateFile := filepath.Join(tmpdir, "rotate.state")
+		require.Nil(t, os.WriteFile(stateFile, []byte(`{"RotationId": "certs-1", "StepIdx": 3, "NewK`), 0o640))
+
+		// We can't tell how far it got, so it isn't resumed. It might hold
+		// the only copy of a private key, so it must not go away either.
+		require.Nil(t, RestoreCertRotationHandler(app, stateFile))
+		bytes, err := os.ReadFile(stateFile)
+		require.Nil(t, err)
+		require.Equal(t, `{"RotationId": "certs-1", "StepIdx": 3, "NewK`, string(bytes))
 	})
 }
 
