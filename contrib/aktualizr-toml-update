@@ -19,6 +19,12 @@ done
 IFS=$ORIGIFS
 [ -n "$SOTA_CONF" ] && echo "Primary sota.toml is $SOTA_CONF"
 
+# fioconfig runs this handler for every file it extracts at boot, so only
+# restart sota client when the files it manages actually change.
+state() {
+	cat /etc/sota/conf.d/$(basename $CONFIG_FILE) ${SOTA_CONF:+"$SOTA_CONF"} 2>/dev/null | cksum
+}
+prev_state=$(state)
 
 if [ -f $CONFIG_FILE ] ; then
 	mkdir -p -m 0700 /etc/sota/conf.d/
@@ -46,6 +52,11 @@ else
 		# Restore an original control of tags/apps in sota.toml.
 		sed -e 's/^# MANAGED BY FIOCONFIG: //g' -i "${SOTA_CONF}"
 	fi
+fi
+
+if [ "$(state)" = "$prev_state" ] ; then
+	echo "Configuration unchanged, not restarting"
+	exit 0
 fi
 
 if systemctl is-enabled --quiet ${SOTA_CLIENT} ; then
